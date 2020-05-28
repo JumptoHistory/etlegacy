@@ -53,6 +53,7 @@ void GLimp_Init(glconfig_t *glConfig, windowContext_t *context);
 void GLimp_Shutdown(void);
 void GLimp_EndFrame(void);
 void GLimp_SetGamma(unsigned char red[256], unsigned char green[256], unsigned char blue[256]);
+void GLimp_GetExtraGLConfigVariables(glconfigExt_t *glconfigExt);
 
 // Console
 void CON_Shutdown(void);

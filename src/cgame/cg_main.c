@@ -37,7 +37,7 @@
 
 displayContextDef_t cgDC;
 
-void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum, qboolean demoPlayback, int etLegacyClient, demoPlayInfo_t *info, int clientVersion);
+void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum, qboolean demoPlayback, int legacyClient, demoPlayInfo_t *info, int clientVersion);
 void CG_Shutdown(void);
 qboolean CG_CheckExecKey(int key);
 extern itemDef_t *g_bindItem;
@@ -122,7 +122,9 @@ centity_t    cg_entities[MAX_GENTITIES];
 weaponInfo_t cg_weapons[MAX_WEAPONS];
 
 vmCvar_t cg_centertime;
-vmCvar_t cg_bobbing;
+vmCvar_t cg_bobup;
+vmCvar_t cg_bobpitch;
+vmCvar_t cg_bobroll;
 vmCvar_t cg_swingSpeed;
 vmCvar_t cg_shadows;
 vmCvar_t cg_gibs;
@@ -195,6 +197,9 @@ vmCvar_t cg_autoactivate;
 
 vmCvar_t pmove_fixed;
 vmCvar_t pmove_msec;
+
+// particle switch
+vmCvar_t cg_wolfparticles;
 
 vmCvar_t cg_gameType;
 vmCvar_t cg_bloodTime;
@@ -336,7 +341,7 @@ vmCvar_t cg_fontScaleCN; // crosshair name
 vmCvar_t cg_optimizePrediction;
 vmCvar_t cg_debugPlayerHitboxes;
 
-#if defined(FEATURE_RATING) || defined(FEATURE_PRESTIGE)
+#ifdef FEATURE_RATING
 // ratings scoreboard
 vmCvar_t cg_scoreboard;
 #endif
@@ -346,7 +351,6 @@ vmCvar_t cg_quickchat;
 vmCvar_t cg_drawspeed;
 
 vmCvar_t cg_visualEffects;
-vmCvar_t cg_bannerTime;
 
 
 typedef struct
@@ -382,7 +386,7 @@ static cvarTable_t cvarTable[] =
 	{ &cg_lagometer,              "cg_lagometer",              "0",           CVAR_ARCHIVE,                 0 },
 	{ &cg_drawSnapshot,           "cg_drawSnapshot",           "0",           CVAR_ARCHIVE,                 0 },
 	{ &cg_drawCrosshair,          "cg_drawCrosshair",          "1",           CVAR_ARCHIVE,                 0 },
-	{ &cg_drawCrosshairInfo,      "cg_drawCrosshairInfo",      "7",           CVAR_ARCHIVE,                 0 },
+	{ &cg_drawCrosshairInfo,      "cg_drawCrosshairInfo",      "3",           CVAR_ARCHIVE,                 0 },
 	{ &cg_drawCrosshairNames,     "cg_drawCrosshairNames",     "1",           CVAR_ARCHIVE,                 0 },
 	{ &cg_drawCrosshairPickups,   "cg_drawCrosshairPickups",   "1",           CVAR_ARCHIVE,                 0 },
 	{ &cg_useWeapsForZoom,        "cg_useWeapsForZoom",        "1",           CVAR_ARCHIVE,                 0 },
@@ -398,7 +402,9 @@ static cvarTable_t cvarTable[] =
 	{ &cg_gun_y,                  "cg_gunY",                   "0",           CVAR_TEMP,                    0 },
 	{ &cg_gun_z,                  "cg_gunZ",                   "0",           CVAR_TEMP,                    0 },
 	{ &cg_centertime,             "cg_centertime",             "5",           CVAR_ARCHIVE,                 0 }, // changed from 3 to 5
-	{ &cg_bobbing,                "cg_bobbing",                "1",           CVAR_ARCHIVE,                 0 },
+	{ &cg_bobup,                  "cg_bobup",                  "0.005",       CVAR_ARCHIVE,                 0 },
+	{ &cg_bobpitch,               "cg_bobpitch",               "0.002",       CVAR_ARCHIVE,                 0 },
+	{ &cg_bobroll,                "cg_bobroll",                "0.002",       CVAR_ARCHIVE,                 0 },
 
 	{ &cg_autoactivate,           "cg_autoactivate",           "1",           CVAR_ARCHIVE,                 0 },
 
@@ -457,6 +463,8 @@ static cvarTable_t cvarTable[] =
 	{ &cg_synchronousClients,     "g_synchronousClients",      "0",           CVAR_SYSTEMINFO | CVAR_CHEAT, 0 }, // communicated by systeminfo
 #endif // ALLOW_GSYNC
 
+	// Rafael - particle switch
+	{ &cg_wolfparticles,          "cg_wolfparticles",          "1",           CVAR_ARCHIVE,                 0 },
 	{ &cg_gameType,               "g_gametype",                "0",           0,                            0 }, // communicated by systeminfo
 	{ &cg_bluelimbotime,          "",                          "30000",       0,                            0 }, // communicated by systeminfo
 	{ &cg_redlimbotime,           "",                          "30000",       0,                            0 }, // communicated by systeminfo
@@ -584,14 +592,15 @@ static cvarTable_t cvarTable[] =
 
 	{ &cg_optimizePrediction,     "cg_optimizePrediction",     "1",           CVAR_ARCHIVE,                 0 }, // unlagged optimized prediction
 
-	{ &cg_scoreboard,             "cg_scoreboard",             "0",           CVAR_ARCHIVE,                 0 },
+#ifdef FEATURE_RATING
+	{ &cg_scoreboard,             "cg_scoreboard",             "1",           CVAR_ARCHIVE,                 0 },
+#endif
 
 	{ &cg_quickchat,              "cg_quickchat",              "0",           CVAR_ARCHIVE,                 0 },
 
 	{ &cg_drawspeed,              "cg_drawspeed",              "0",           CVAR_ARCHIVE,                 0 },
 
-	{ &cg_visualEffects,          "cg_visualEffects",          "1",           CVAR_ARCHIVE,                 0 },  // Draw visual effects (i.e : airstrike plane, debris ...)
-	{ &cg_bannerTime,             "cg_bannerTime",             "10000",       CVAR_ARCHIVE,                 0 },
+	{ &cg_visualEffects,          "cg_visualEffects",          "1",           CVAR_ARCHIVE,                 0 }  // Draw visual effects (i.e : airstrike plane, debris ...)
 };
 
 static const unsigned int cvarTableSize = sizeof(cvarTable) / sizeof(cvarTable[0]);
@@ -1709,7 +1718,6 @@ static void CG_RegisterGraphics(void)
 	cgs.media.spawnInvincibleShader = trap_R_RegisterShader("sprites/shield");
 	cgs.media.scoreEliminatedShader = trap_R_RegisterShader("sprites/skull");
 	cgs.media.medicReviveShader     = trap_R_RegisterShader("sprites/medic_revive");
-	cgs.media.disguisedShader       = trap_R_RegisterShader("sprites/undercover");
 
 	cgs.media.destroyShader = trap_R_RegisterShader("sprites/destroy");
 
@@ -1746,6 +1754,10 @@ static void CG_RegisterGraphics(void)
 	cgs.media.spotLightBeamShader = trap_R_RegisterShader("lightBeam");
 	//cgs.media.bulletParticleTrailShader = trap_R_RegisterShader("bulletParticleTrail"); // unused FIXME: remove from shader def
 	cgs.media.smokeParticleShader = trap_R_RegisterShader("smokeParticle");
+
+	// bullet hitting dirt
+	cgs.media.dirtParticle1Shader = trap_R_RegisterShader("dirt_splash");
+	cgs.media.dirtParticle2Shader = trap_R_RegisterShader("water_splash");
 
 	cgs.media.genericConstructionShader = trap_R_RegisterShader("textures/sfx/construction");
 	cgs.media.shoutcastLandmineShader   = trap_R_RegisterShader("textures/sfx/shoutcast_landmine");
@@ -1789,10 +1801,10 @@ static void CG_RegisterGraphics(void)
 	cgs.media.ccCmdPost[0] = trap_R_RegisterShaderNoMip("gfx/limbo/cm_bo_axis");
 	cgs.media.ccCmdPost[1] = trap_R_RegisterShaderNoMip("gfx/limbo/cm_bo_allied");
 
-	cgs.media.ccMortarHit       = trap_R_RegisterShaderNoMip("gfx/limbo/cm_mort_hit");
-	cgs.media.ccMortarTarget    = trap_R_RegisterShaderNoMip("gfx/limbo/cm_mort_target");
-	cgs.media.mortarTarget      = trap_R_RegisterShaderNoMip("gfx/limbo/mort_target");
-	cgs.media.mortarTargetArrow = trap_R_RegisterShaderNoMip("gfx/limbo/mort_targetarrow");
+	cgs.media.ccMortarHit         = trap_R_RegisterShaderNoMip("gfx/limbo/cm_mort_hit");
+	cgs.media.ccMortarTarget      = trap_R_RegisterShaderNoMip("gfx/limbo/cm_mort_target");
+	cgs.media.mortarTarget        = trap_R_RegisterShaderNoMip("gfx/limbo/mort_target");
+	cgs.media.mortarTargetArrow   = trap_R_RegisterShaderNoMip("gfx/limbo/mort_targetarrow");
 
 	cgs.media.skillPics[SK_BATTLE_SENSE]                             = trap_R_RegisterShaderNoMip("gfx/limbo/ic_battlesense");
 	cgs.media.skillPics[SK_EXPLOSIVES_AND_CONSTRUCTION]              = trap_R_RegisterShaderNoMip("gfx/limbo/ic_engineer");
@@ -1801,12 +1813,6 @@ static void CG_RegisterGraphics(void)
 	cgs.media.skillPics[SK_LIGHT_WEAPONS]                            = trap_R_RegisterShaderNoMip("gfx/limbo/ic_lightweap");
 	cgs.media.skillPics[SK_HEAVY_WEAPONS]                            = trap_R_RegisterShaderNoMip("gfx/limbo/ic_soldier");
 	cgs.media.skillPics[SK_MILITARY_INTELLIGENCE_AND_SCOPED_WEAPONS] = trap_R_RegisterShaderNoMip("gfx/limbo/ic_covertops");
-
-#ifdef FEATURE_PRESTIGE
-	cgs.media.prestigePics[0] = trap_R_RegisterShaderNoMip("gfx/hud/prestige/prestige");
-	cgs.media.prestigePics[1] = trap_R_RegisterShaderNoMip("gfx/hud/prestige/prestige_stamp");
-	cgs.media.prestigePics[2] = trap_R_RegisterShaderNoMip("gfx/hud/prestige/prestige_collect");
-#endif
 
 	CG_LoadRankIcons();
 
@@ -1989,7 +1995,7 @@ static void CG_RegisterGraphics(void)
 	}
 
 	CG_LoadingString(" - particles -");
-	CG_InitParticles();
+	CG_ClearParticles();
 
 	InitSmokeSprites();
 
@@ -2104,7 +2110,10 @@ static void CG_RegisterGraphics(void)
 	cgs.media.cm_spec_icon  = trap_R_RegisterShaderNoMip("ui/assets/mp_spec");
 	cgs.media.cm_arrow_spec = trap_R_RegisterShaderNoMip("ui/assets/mp_arrow_spec");
 
-	cgs.media.fireteamIcon = trap_R_RegisterShaderNoMip("sprites/fireteam");
+	for (i = 0; i < 6; i++)
+	{
+		cgs.media.fireteamicons[i] = trap_R_RegisterShaderNoMip(va("gfx/hud/fireteam/fireteam%i", i + 1));
+	}
 
 	CG_LoadingString(" - game media -");
 }
@@ -2541,13 +2550,13 @@ void CG_AssetCache(void)
 	cgDC.Assets.sliderThumb         = trap_R_RegisterShaderNoMip(ASSET_SLIDER_THUMB);
 }
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 #define DEBUG_INITPROFILE_INIT int elapsed, dbgTime = trap_Milliseconds();
 #define DEBUG_INITPROFILE_EXEC(f) if (developer.integer) { CG_Printf("^5%s passed in %i msec\n", f, elapsed = trap_Milliseconds() - dbgTime);  dbgTime += elapsed; }
 #else
 #define DEBUG_INITPROFILE_INIT
 #define DEBUG_INITPROFILE_EXEC(f)
-#endif // ETLEGACY_DEBUG
+#endif // LEGACY_DEBUG
 
 /**
  * @brief Called after every level change or subsystem restart
@@ -2556,20 +2565,19 @@ void CG_AssetCache(void)
  * @param serverCommandSequence
  * @param clientNum
  * @param demoPlayback
- * @param etLegacyClient
+ * @param legacyClient
  * @param info
  * @param clientVersion
  */
-void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum, qboolean demoPlayback, int etLegacyClient, demoPlayInfo_t *info, int clientVersion)
+void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum, qboolean demoPlayback, int legacyClient, demoPlayInfo_t *info, int clientVersion)
 {
 	const char *s;
 	int        i;
-	char       versionString[128];
 	DEBUG_INITPROFILE_INIT
 
 	//int startat = trap_Milliseconds();
 
-	Com_Printf(S_COLOR_MDGREY "Initializing %s cgame " S_COLOR_GREEN ETLEGACY_VERSION "\n", MODNAME);
+	Com_Printf(S_COLOR_MDGREY "Initializing Legacy cgame " S_COLOR_GREEN ETLEGACY_VERSION "\n");
 
 	// clean up the config backup if one exists
 	CG_RestoreProfile();
@@ -2601,7 +2609,7 @@ void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum, qbo
 
 	cg.demoPlayback = demoPlayback;
 
-	MOD_CHECK_ETLEGACY(etLegacyClient, clientVersion, cg.etLegacyClient);
+	MOD_CHECK_LEGACY(legacyClient, clientVersion, cg.legacyClient);
 
 	// get the rendering configuration from the client system
 	trap_GetGlconfig(&cgs.glconfig);
@@ -2609,7 +2617,7 @@ void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum, qbo
 	cgs.screenYScale = cgs.glconfig.vidHeight / 480.0f;
 
 
-	if (cg.etLegacyClient <= 0)
+	if (cg.legacyClient <= 0)
 	{
 		cgs.glconfig.windowAspect = (float)cgs.glconfig.vidWidth / (float)cgs.glconfig.vidHeight;
 	}
@@ -2702,15 +2710,13 @@ void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum, qbo
 	}
 
 	/* mark old and new clients */
-	if (cg.etLegacyClient <= 0)
+	if (cg.legacyClient <= 0)
 	{
-		trap_Cvar_VariableStringBuffer("version", versionString, sizeof(versionString));
-		trap_Cvar_Set("cg_etVersion", versionString[0] ? versionString : "(undetected)");
+		trap_Cvar_Set("cg_etVersion", "Enemy Territory, ET 2.60b");
 	}
 	else
 	{
-		sprintf(versionString, "%i", clientVersion);
-		trap_Cvar_Set("cg_etVersion", va(PRODUCT_LABEL " v%c.%s %s", versionString[0], versionString + 1, CPUSTRING));
+		trap_Cvar_Set("cg_etVersion", Q3_VERSION);
 	}
 
 #if 0
@@ -2826,7 +2832,7 @@ void CG_Init(int serverMessageNum, int serverCommandSequence, int clientNum, qbo
 
 	CG_UpdateSvCvars();
 
-	CG_ParseModInfo();
+	CG_ParseLegacyinfo();
 
 	cg.crosshairMine = -1;
 	cg.crosshairDyna = -1;

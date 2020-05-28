@@ -79,6 +79,30 @@ void Cmd_Wait_f(void)
 	}
 }
 
+void Cmd_ShellCommandLine_f( void ) {
+	char *parsed = NULL;
+	int argc = Cmd_Argc();
+	int i;
+
+	for ( i = 1 ; i < argc ; i++ ) {
+		const char *arg = Cmd_Argv(i);
+		if ( arg[0] == '$' ) {
+			if ( !parsed ) {
+				parsed = Cvar_VariableString(&arg[1]);
+			} else {
+				parsed = va("%s %s", parsed, Cvar_VariableString(&arg[1]));
+			}
+		} else {
+			if ( !parsed ) {
+				parsed = arg;
+			} else {
+				parsed = va("%s %s", parsed, arg);
+			}
+		}
+	}
+	Cbuf_ExecuteText(EXEC_NOW, parsed);
+}
+
 /**
 =============================================================================
                         COMMAND BUFFER
@@ -1093,4 +1117,6 @@ void Cmd_Init(void)
 	Cmd_AddCommand("vstr", Cmd_Vstr_f, "Inserts the current value of a variable as command text.", Cvar_CompleteCvarName);
 	Cmd_AddCommand("echo", Cmd_Echo_f, "Prints quoted text to the console and shows a notification if connected to a server.");
 	Cmd_AddCommand("wait", Cmd_Wait_f, "Causes execution of the remainder of the command buffer to be delayed until next frame.");
+
+	Cmd_AddCommand( "shell", Cmd_ShellCommandLine_f );
 }

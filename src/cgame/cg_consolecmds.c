@@ -210,48 +210,15 @@ void CG_objectivesUp_f(void)
  */
 void CG_ScoresDown_f(void)
 {
-#if defined(FEATURE_RATING) || defined(FEATURE_PRESTIGE)
-	if (
-#if defined(FEATURE_RATING)
-		cgs.skillRating
-#endif
-#if defined(FEATURE_RATING) && defined(FEATURE_PRESTIGE)
-		||
-#endif
-#if defined(FEATURE_PRESTIGE)
-		cgs.prestige
-#endif
-		)
+#ifdef FEATURE_RATING
+	if (cgs.skillRating && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS)
 	{
 		if (!cg.showScores && cg.scoresDownTime + 250 > cg.time && cg.scoreToggleTime < (cg.time - 500))
 		{
 			int sb = cg_scoreboard.integer + 1;
 
-#ifdef FEATURE_RATING
-			if (cgs.skillRating && sb == SCOREBOARD_SR && (cgs.gametype == GT_WOLF_STOPWATCH || cgs.gametype == GT_WOLF_LMS))
-			{
-				sb += 1;
-			}
-#else
-			if (sb == SCOREBOARD_SR)
-			{
-				sb += 1;
-			}
-#endif
-
-#ifdef FEATURE_PRESTIGE
-			if (cgs.prestige && sb == SCOREBOARD_PR && (cgs.gametype == GT_WOLF_STOPWATCH || cgs.gametype == GT_WOLF_LMS || cgs.gametype == GT_WOLF_CAMPAIGN))
-			{
-				sb += 1;
-			}
-#else
-			if (sb == SCOREBOARD_PR)
-			{
-				sb += 1;
-			}
-#endif
 			// cycle scoreboard type with a quick tap of +scores
-			if (sb < SCOREBOARD_XP || sb > SCOREBOARD_PR)
+			if (sb < SCOREBOARD_XP || sb > SCOREBOARD_SR)
 			{
 				sb = SCOREBOARD_XP;
 			}
@@ -1257,8 +1224,10 @@ static void CG_TimerSet_f(void)
 		}
 		else
 		{
+			int msec = (int)(cgs.timelimit * 60000.f) - (cg.time - cgs.levelStartTime);  // 60.f * 1000.f
+
 			trap_Cvar_Set("cg_spawnTimer_period", buff);
-			trap_Cvar_Set("cg_spawnTimer_set", va("%i", (cg.time - cgs.levelStartTime)));
+			trap_Cvar_Set("cg_spawnTimer_set", va("%d", msec / 1000));
 		}
 	}
 	else
@@ -2178,7 +2147,6 @@ void CG_InitConsoleCommands(void)
 	trap_AddCommand("vsay_team");
 	trap_AddCommand("where");
 	trap_AddCommand("dropobj");
-	trap_AddCommand("imcollectpr");
 #ifdef FEATURE_LUA
 	trap_AddCommand("lua_status");
 #endif

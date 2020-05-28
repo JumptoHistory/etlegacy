@@ -1161,6 +1161,12 @@ void CL_InitCGame(void)
 	mapname = Info_ValueForKey(info, "mapname");
 	Com_sprintf(cl.mapname, sizeof(cl.mapname), "maps/%s.bsp", mapname);
 
+	// map cfg
+	if (cl_mapConfigDirectory->string[0]) {
+		Cbuf_AddText(va("exec %s/default.cfg\n", cl_mapConfigDirectory->string));
+		Cbuf_AddText(va("exec %s/%s.cfg\n", cl_mapConfigDirectory->string, mapname));
+	}
+
 	// load the dll
 	cgvm = VM_Create("cgame", qtrue, CL_CgameSystemCalls, VMI_NATIVE);
 	if (!cgvm)

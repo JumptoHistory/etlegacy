@@ -44,6 +44,8 @@
 #include "sdl_icon.h"
 #include "sdl_splash.h"
 
+//static qboolean SDL_VIDEODRIVER_externallySet = qfalse;
+
 #ifdef __APPLE__
 #define MACOS_X_GAMMA_RESET_FIX
 #ifdef MACOS_X_GAMMA_RESET_FIX
@@ -69,7 +71,6 @@ cvar_t *r_swapInterval;
 cvar_t *r_mode;
 cvar_t *r_customaspect;
 cvar_t *r_displayRefresh;
-cvar_t *r_windowLocation;
 
 // Window surface cvars
 cvar_t *r_stencilbits;  // number of desired stencil bits
@@ -223,7 +224,6 @@ static void GLimp_InitCvars(void)
 	r_customaspect   = Cvar_Get("r_customaspect", "1", CVAR_ARCHIVE | CVAR_LATCH);
 	r_displayRefresh = Cvar_Get("r_displayRefresh", "0", CVAR_LATCH);
 	Cvar_CheckRange(r_displayRefresh, 0, 240, qtrue);
-	r_windowLocation = Cvar_Get("r_windowLocation", "0,-1,-1", CVAR_ARCHIVE | CVAR_PROTECTED);
 
 	// Window render surface cvars
 	r_stencilbits     = Cvar_Get("r_stencilbits", "0", CVAR_ARCHIVE | CVAR_LATCH | CVAR_UNSAFE);
@@ -231,7 +231,7 @@ static void GLimp_InitCvars(void)
 	r_colorbits       = Cvar_Get("r_colorbits", "0", CVAR_ARCHIVE | CVAR_LATCH | CVAR_UNSAFE);
 	r_ignorehwgamma   = Cvar_Get("r_ignorehwgamma", "0", CVAR_ARCHIVE | CVAR_LATCH | CVAR_UNSAFE);
 	r_ext_multisample = Cvar_Get("r_ext_multisample", "0", CVAR_ARCHIVE | CVAR_LATCH | CVAR_UNSAFE);
-	Cvar_CheckRange(r_ext_multisample, 0, 8, qtrue);
+	Cvar_CheckRange(r_ext_multisample, 0, 16, qtrue);
 
 	// Old modes (these are used by the UI code)
 	Cvar_Get("r_oldFullscreen", "", CVAR_ARCHIVE);
@@ -256,11 +256,6 @@ void GLimp_Shutdown(void)
 
 	if (main_window)
 	{
-		int tmpX = SDL_WINDOWPOS_UNDEFINED, tmpY = SDL_WINDOWPOS_UNDEFINED;
-		int displayIndex = SDL_GetWindowDisplayIndex(main_window);
-		SDL_GetWindowPosition(main_window, &tmpX, &tmpY);
-		Cvar_Set("r_windowLocation", va("%d,%d,%d", displayIndex, tmpX, tmpY));
-
 		SDL_DestroyWindow(main_window);
 		main_window = NULL;
 	}
@@ -404,109 +399,6 @@ static void GLimp_DetectAvailableModes(void)
 }
 
 /**
- * @brief Setup the window location based on the previous sessions location and display
- * @param glConfig[in] current gl configuration
- * @param x[in,out] X location
- * @param y[in,out] Y location
- * @param fullscreen requested to run fullscreen
- */
-static void GLimp_WindowLocation(glconfig_t *glConfig, int *x, int *y, const qboolean fullscreen)
-{
-	int displayIndex = 0, tmpX = SDL_WINDOWPOS_UNDEFINED, tmpY = SDL_WINDOWPOS_UNDEFINED;
-	int numDisplays = SDL_GetNumVideoDisplays();
-
-	if (!r_windowLocation->string || !r_windowLocation->string[0])
-	{
-		// Center window
-		if (r_centerWindow->integer && !fullscreen)
-		{
-			*x = SDL_WINDOWPOS_CENTERED;
-			*y = SDL_WINDOWPOS_CENTERED;
-		}
-		else
-		{
-			*x = SDL_WINDOWPOS_UNDEFINED;
-			*y = SDL_WINDOWPOS_UNDEFINED;
-		}
-		return;
-	}
-
-	// We might be in headless mode, just ignore for now (xD)
-	if (numDisplays < 0)
-	{
-		numDisplays = 1;
-	}
-
-	if (sscanf(r_windowLocation->string, "%d,%d,%d", &displayIndex, &tmpX, &tmpY) != 3)
-	{
-		return;
-	}
-
-	if (displayIndex < 0 || displayIndex >= numDisplays)
-	{
-		// Center window
-		if (r_centerWindow->integer && !fullscreen)
-		{
-			*x = SDL_WINDOWPOS_CENTERED;
-			*y = SDL_WINDOWPOS_CENTERED;
-		}
-		else
-		{
-			*x = SDL_WINDOWPOS_UNDEFINED;
-			*y = SDL_WINDOWPOS_UNDEFINED;
-		}
-		return;
-	}
-
-	// Center window
-	if (r_centerWindow->integer && !fullscreen)
-	{
-		*x = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
-		*y = SDL_WINDOWPOS_CENTERED_DISPLAY(displayIndex);
-		return;
-	}
-
-	if (fullscreen || r_mode->integer == -2)
-	{
-		*x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(displayIndex);
-		*y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(displayIndex);
-		return;
-	}
-
-	// Default values so we skip out with safe values
-	if (tmpX == -1 && tmpY == -1)
-	{
-		*x = SDL_WINDOWPOS_UNDEFINED;
-		*y = SDL_WINDOWPOS_UNDEFINED;
-		return;
-	}
-
-	SDL_Rect rect;
-	SDL_GetDisplayBounds(displayIndex, &rect);
-
-	// SDL resets the values to displays origins when switching between windowed and fullscreen, so just move it a bit
-	if (tmpX == rect.x && tmpY == rect.y)
-	{
-		*x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(displayIndex);
-		*y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(displayIndex);
-		return;
-	}
-
-	// Make sure we have at least half of the game screen visible on the display its supposed to be in
-	if ((tmpX + (glConfig->vidWidth / 2)) > rect.x && (tmpX + (glConfig->vidWidth / 2)) < (rect.x + rect.w)
-	    && (tmpY + (glConfig->vidHeight / 2)) > rect.y && (tmpY + (glConfig->vidHeight / 2)) < (rect.y + rect.h))
-	{
-		*x = tmpX;
-		*y = tmpY;
-
-		return;
-	}
-
-	*x = SDL_WINDOWPOS_UNDEFINED_DISPLAY(displayIndex);
-	*y = SDL_WINDOWPOS_UNDEFINED_DISPLAY(displayIndex);
-}
-
-/**
  * @brief GLimp_SetMode
  * @param[in,out] glConfig
  * @param[in] mode
@@ -524,7 +416,7 @@ static int GLimp_SetMode(glconfig_t *glConfig, int mode, qboolean fullscreen, qb
 	SDL_Surface     *icon = NULL;
 	SDL_DisplayMode desktopMode;
 	int             display = 0;
-	int             x = SDL_WINDOWPOS_UNDEFINED, y = SDL_WINDOWPOS_UNDEFINED;
+	int             x       = SDL_WINDOWPOS_UNDEFINED, y = SDL_WINDOWPOS_UNDEFINED;
 
 	Uint32 flags = SDL_WINDOW_OPENGL | SDL_WINDOW_INPUT_GRABBED;
 
@@ -536,17 +428,17 @@ static int GLimp_SetMode(glconfig_t *glConfig, int mode, qboolean fullscreen, qb
 	}
 
 	icon = SDL_CreateRGBSurfaceFrom(
-		(void *)CLIENT_WINDOW_ICON.pixel_data,
-		CLIENT_WINDOW_ICON.width,
-		CLIENT_WINDOW_ICON.height,
-		CLIENT_WINDOW_ICON.bytes_per_pixel * 8,
-		CLIENT_WINDOW_ICON.bytes_per_pixel * CLIENT_WINDOW_ICON.width,
+	    (void *)CLIENT_WINDOW_ICON.pixel_data,
+	    CLIENT_WINDOW_ICON.width,
+	    CLIENT_WINDOW_ICON.height,
+	    CLIENT_WINDOW_ICON.bytes_per_pixel * 8,
+	    CLIENT_WINDOW_ICON.bytes_per_pixel * CLIENT_WINDOW_ICON.width,
 #ifdef Q3_LITTLE_ENDIAN
-		0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000
+	    0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000
 #else
-		0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF
+	    0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF
 #endif
-		);
+	    );
 
 	// If a window exists, note its display index
 	if (main_window != NULL)
@@ -593,7 +485,12 @@ static int GLimp_SetMode(glconfig_t *glConfig, int mode, qboolean fullscreen, qb
 	}
 	Com_Printf("%dx%d\n", glConfig->vidWidth, glConfig->vidHeight);
 
-	GLimp_WindowLocation(glConfig, &x, &y, fullscreen);
+	// Center window
+	if (r_centerWindow->integer && !fullscreen)
+	{
+		x = (desktopMode.w / 2) - (glConfig->vidWidth / 2);
+		y = (desktopMode.h / 2) - (glConfig->vidHeight / 2);
+	}
 
 	// Destroy existing state if it exists
 	if (SDL_glContext != NULL)
@@ -753,12 +650,6 @@ static int GLimp_SetMode(glconfig_t *glConfig, int mode, qboolean fullscreen, qb
 		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 1);
 #endif
 
-#ifdef FEATURE_RENDERER_GLES
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 1);
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-#endif
-
 		SDL_GL_SetAttribute(SDL_GL_RED_SIZE, perChannelColorBits);
 		SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, perChannelColorBits);
 		SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, perChannelColorBits);
@@ -812,7 +703,6 @@ static int GLimp_SetMode(glconfig_t *glConfig, int mode, qboolean fullscreen, qb
 
 		SDL_SetWindowIcon(main_window, icon);
 
-#ifndef FEATURE_RENDERER_GLES
 		if (context && context->versionMajor > 0)
 		{
 			SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, context->versionMajor);
@@ -835,7 +725,6 @@ static int GLimp_SetMode(glconfig_t *glConfig, int mode, qboolean fullscreen, qb
 				break;
 			}
 		}
-#endif
 
 		if ((SDL_glContext = SDL_GL_CreateContext(main_window)) == NULL)
 		{
@@ -898,7 +787,7 @@ static qboolean GLimp_StartDriverAndSetMode(glconfig_t *glConfig, int mode, qboo
 	{
 		if (SDL_Init(SDL_INIT_VIDEO) < 0)
 		{
-			Com_Printf("SDL_Init(SDL_INIT_VIDEO) FAILED (%s)\n", SDL_GetError());
+			Com_Printf("SDL_Init( SDL_INIT_VIDEO ) FAILED (%s)\n", SDL_GetError());
 			return qfalse;
 		}
 
@@ -935,7 +824,7 @@ static qboolean GLimp_StartDriverAndSetMode(glconfig_t *glConfig, int mode, qboo
 	return qfalse;
 }
 
-#define R_MODE_FALLBACK 4 // 800 * 600
+#define R_MODE_FALLBACK 3 // 640 * 480
 
 /**
  * @brief GLimp_Splash
@@ -944,28 +833,28 @@ static qboolean GLimp_StartDriverAndSetMode(glconfig_t *glConfig, int mode, qboo
  */
 void GLimp_Splash(glconfig_t *glConfig)
 {
-	unsigned char splashData[SPLASH_DATA_SIZE]; // width * height * bytes_per_pixel
-	SDL_Surface   *splashImage = NULL;
+	unsigned char splashData[144000]; // width * height * bytes_per_pixel
+	SDL_Surface *splashImage = NULL;
 
 	// decode splash image
 	SPLASH_IMAGE_RUN_LENGTH_DECODE(splashData,
-	                               CLIENT_WINDOW_SPLASH.rle_pixel_data,
-	                               CLIENT_WINDOW_SPLASH.width * CLIENT_WINDOW_SPLASH.height,
-	                               CLIENT_WINDOW_SPLASH.bytes_per_pixel);
+	    CLIENT_WINDOW_SPLASH.rle_pixel_data,
+	    CLIENT_WINDOW_SPLASH.width * CLIENT_WINDOW_SPLASH.height,
+	    CLIENT_WINDOW_SPLASH.bytes_per_pixel);
 
 	// get splash image
 	splashImage = SDL_CreateRGBSurfaceFrom(
-		(void *)splashData,
-		CLIENT_WINDOW_SPLASH.width,
-		CLIENT_WINDOW_SPLASH.height,
-		CLIENT_WINDOW_SPLASH.bytes_per_pixel * 8,
-		CLIENT_WINDOW_SPLASH.bytes_per_pixel * CLIENT_WINDOW_SPLASH.width,
+	    (void *)splashData,
+	    CLIENT_WINDOW_SPLASH.width,
+	    CLIENT_WINDOW_SPLASH.height,
+	    CLIENT_WINDOW_SPLASH.bytes_per_pixel * 8,
+	    CLIENT_WINDOW_SPLASH.bytes_per_pixel * CLIENT_WINDOW_SPLASH.width,
 #ifdef Q3_LITTLE_ENDIAN
-		0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000
+	    0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000
 #else
-		0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF
+	    0xFF000000, 0x00FF0000, 0x0000FF00, 0x000000FF
 #endif
-		);
+	    );
 
 	SDL_Rect dstRect;
 	dstRect.x = glConfig->vidWidth / 2 - splashImage->w / 2;
@@ -974,14 +863,8 @@ void GLimp_Splash(glconfig_t *glConfig)
 	dstRect.h = splashImage->h;
 
 	// apply image on surface
-	if (SDL_BlitSurface(splashImage, NULL, SDL_GetWindowSurface(main_window), &dstRect) == 0)
-	{
-		SDL_UpdateWindowSurface(main_window);
-	}
-	else
-	{
-		Com_Printf(S_COLOR_YELLOW "SDL_BlitSurface failed - %s\n", SDL_GetError());
-	}
+	SDL_BlitSurface(splashImage, NULL, SDL_GetWindowSurface(main_window), &dstRect);
+	SDL_UpdateWindowSurface(main_window);
 
 	SDL_FreeSurface(splashImage);
 }
@@ -1053,6 +936,15 @@ success:
 
 	// This depends on SDL_INIT_VIDEO, hence having it here
 	IN_Init();
+}
+
+/**
+* @brief Glimp_GetExtraGLConfigVariables
+* @parm[out] glconfigExt
+*/
+void GLimp_GetExtraGLConfigVariables(glconfigExt_t *glconfigExt)
+{
+	SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &glconfigExt->multisampleSamples);
 }
 
 #ifdef MACOS_X_GAMMA_RESET_FIX

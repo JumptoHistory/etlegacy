@@ -576,9 +576,6 @@ typedef struct
 	// skill rating
 	float rating;
 #endif
-#ifdef FEATURE_PRESTIGE
-	int prestige;
-#endif
 } score_t;
 
 /**
@@ -615,9 +612,6 @@ typedef struct clientInfo_s
 	int medals[SK_NUM_SKILLS];
 	int skill[SK_NUM_SKILLS];
 	int skillpoints[SK_NUM_SKILLS];      ///< filled OOB by +wstats
-#ifdef FEATURE_PRESTIGE
-	int deltaskillpoints[SK_NUM_SKILLS];
-#endif
 
 	int disguiseClientNum;
 
@@ -654,10 +648,6 @@ typedef struct clientInfo_s
 	// skill rating
 	float rating;
 	float deltaRating;
-#endif
-
-#ifdef FEATURE_PRESTIGE
-	int prestige;
 #endif
 
 #ifdef FEATURE_MULTIVIEW
@@ -769,120 +759,14 @@ typedef struct weaponModel_s
 
 /**
  * @struct weaponSounds_s
- * @typedef weaponSounds_t
+ * @typedef impactSounds_t
  * @brief
  */
 typedef struct weaponSounds_s
 {
 	int count;
 	sfxHandle_t sounds[MAX_WEAPON_SOUNDS];
-} weaponSounds_t;
-
-#define MAX_IMPACT_PARTICLE 8
-#define MAX_IMPACT_PARTICLE_EFFECT 2
-
-/**
- * @struct impactParticleEffect_s
- * @typedef impactParticleEffect_t
- * @brief
- */
-typedef struct impactParticleEffect_s
-{
-	qboolean particleEffectUsed;
-	qhandle_t particleEffectShader;
-	int particleEffectSpeed;
-	float particleEffectSpeedRand;
-	int particleEffectDuration;
-	int particleEffectCount;
-	float particleEffectRandScale;
-	int particleEffectWidth;
-	int particleEffectHeight;
-	float particleEffectAlpha;
-
-} impactParticleEffect_t;
-
-/**
- * @struct impactExtraEffect_s
- * @typedef impactExtraEffect_t
- * @brief
- */
-typedef struct impactExtraEffect_s
-{
-	qboolean extraEffectUsed;
-	int extraEffectCount;
-	float extraEffectOriginRand;
-	float extraEffectVelocityRand;
-	float extraEffectVelocityScaling;
-	char extraEffectShaderName[16];
-	int extraEffectDuration;
-	float extraEffectDurationRand;
-	int extraEffectSizeStart;
-	float extraEffectSizeStartRand;
-	int extraEffectSizeEnd;
-	float extraEffectSizeEndRand;
-	qboolean extraEffectLightAnim;
-
-} impactExtraEffect_t;
-
-/**
- * @struct impactParticle_s
- * @typedef impactParticle_t
- * @brief
- */
-typedef struct impactParticle_s
-{
-	float particleDirectionOffset;
-	float particleDirectionScaling;
-
-	// specific for water effect
-	// ripple
-	int waterRippleRadius;
-	int waterRippleLifeTime;
-
-	// splash
-	int waterSplashDuration;
-	int waterSplashLight;
-	vec3_t waterSplashLightColor;
-
-	// particle effect
-	impactParticleEffect_t particleEffect[W_MAX_SND_SURF][MAX_IMPACT_PARTICLE_EFFECT];
-
-	// particle explosion effect
-
-	// main explosion (position on missile origin)
-	char explosionShaderName[16];
-	int explosionDuration;
-	int explosionSizeStart;
-	float explosionSizeStartRand;
-	int explosionSizeEnd;
-	float explosionSizeEndRand;
-	qboolean explosionLightAnim;
-
-	impactExtraEffect_t extraEffect[MAX_IMPACT_PARTICLE_EFFECT];
-
-	// debris
-	int debrisSpeed;
-	float debrisSpeedRand;
-	int debrisDuration;
-	float debrisDurationRand;
-	int debrisCount;
-	int debrisCountExtra;
-	qboolean debrisForBullet;
-
-} impactParticle_t;
-
-
-/**
- * @struct impactParticleTable_s
- * @typedef impactParticleTable_t
- * @brief
- */
-typedef struct impactParticleTable_s
-{
-	char impactParticleName[MAX_QPATH];
-	impactParticle_t impactParticle;
-
-}impactParticleTable_t;
+}weaponSounds_t;
 
 /**
  * @struct weaponInfo_s
@@ -950,14 +834,12 @@ typedef struct weaponInfo_s
 	sfxHandle_t switchSound;
 	sfxHandle_t noAmmoSound;
 
-	int impactDurationCoeff;
-	int impactMarkMaxRange;
 	int impactSoundRange;
 	int impactSoundVolume;
 	float impactMarkRadius;
 	sfxHandle_t impactMark[W_MAX_SND_SURF];
 	weaponSounds_t impactSound[W_MAX_SND_SURF];
-	impactParticle_t *impactParticle;
+	void (*impactFunc)(int weapon, int missileEffect, vec3_t origin, vec3_t dir, int surfFlags, float *radius, int *markDuration);
 } weaponInfo_t;
 
 #define MAX_VIEWDAMAGE  8
@@ -1086,7 +968,7 @@ typedef struct
 
 	qboolean demoPlayback;
 	demoPlayInfo_t *demoinfo;
-	int etLegacyClient;                     ///< is either 0 (vanilla client) or a version integer from git_version.h
+	int legacyClient;                       ///< is either 0 (vanilla client) 1 (old legacy client) or a version integer from git_version.h
 	qboolean loading;                       ///< don't defer players at initial startup
 	qboolean intermissionStarted;           ///< don't draw disconnect icon/message because game will end shortly
 
@@ -1133,7 +1015,6 @@ typedef struct
 
 	float duckChange;                       ///< for duck viewheight smoothing
 	int duckTime;
-	qboolean wasProne;
 
 	int weaponSetTime;                      ///< mg/mortar set time
 
@@ -1492,26 +1373,16 @@ typedef struct
 	int redFlagCounter;
 	int blueFlagCounter;
 
-#if defined(FEATURE_RATING) || defined(FEATURE_PRESTIGE)
-	// scoreboard
-	int scoresDownTime;
-	int scoreToggleTime;
-#endif
-
 #ifdef FEATURE_RATING
 	// skill rating
 	float rating[MAX_CLIENTS];
 	float axisProb;
 	float alliesProb;
-#endif
 
-#ifdef FEATURE_PRESTIGE
-	int prestige[MAX_CLIENTS];
+	// scoreboard
+	int scoresDownTime;
+	int scoreToggleTime;
 #endif
-
-	// banner printing
-	int bannerPrintTime;
-	char bannerPrint[1024];
 } cg_t;
 
 #define MAX_LOCKER_DEBRIS   5
@@ -1565,7 +1436,6 @@ typedef struct
 	qhandle_t scoreEliminatedShader;
 
 	qhandle_t medicReviveShader;
-	qhandle_t disguisedShader;
 	qhandle_t voiceChatShader;
 	qhandle_t balloonShader;
 	qhandle_t objectiveShader;
@@ -1718,6 +1588,10 @@ typedef struct
 
 	qhandle_t smokeParticleShader;
 
+	// bullet hitting dirt
+	qhandle_t dirtParticle1Shader;
+	qhandle_t dirtParticle2Shader;
+
 	qhandle_t genericConstructionShader;
 	qhandle_t shoutcastLandmineShader;
 
@@ -1797,9 +1671,6 @@ typedef struct
 	qhandle_t ccDestructIcon[3][2];
 	qhandle_t ccTankIcon;
 	qhandle_t skillPics[SK_NUM_SKILLS];
-#ifdef FEATURE_PRESTIGE
-	qhandle_t prestigePics[3];
-#endif
 	qhandle_t ccMortarHit;
 	qhandle_t ccMortarTarget;
 	qhandle_t mortarTarget;
@@ -1919,7 +1790,7 @@ typedef struct
 	qhandle_t cm_spec_icon;
 	qhandle_t cm_arrow_spec;
 
-	qhandle_t fireteamIcon;
+	qhandle_t fireteamicons[6];
 
 	qhandle_t countryFlags;         ///< GeoIP
 
@@ -2059,9 +1930,8 @@ enum
 // Big popup filters
 enum
 {
-	POPUP_BIG_FILTER_SKILL    = BIT(0),
-	POPUP_BIG_FILTER_RANK     = BIT(1),
-	POPUP_BIG_FILTER_PRESTIGE = BIT(2),
+	POPUP_BIG_FILTER_SKILL = BIT(0),
+	POPUP_BIG_FILTER_RANK  = BIT(1),
 };
 
 /// Locations
@@ -2141,14 +2011,10 @@ typedef struct
 	float lastZ;
 } clientLocation_t;
 
-#if defined(FEATURE_RATING) && defined(FEATURE_PRESTIGE)
-#define NUM_ENDGAME_AWARDS     22   ///< total number of endgame awards
-#else
-#if defined(FEATURE_RATING) || defined(FEATURE_PRESTIGE)
+#ifdef FEATURE_RATING
 #define NUM_ENDGAME_AWARDS     21   ///< total number of endgame awards
 #else
 #define NUM_ENDGAME_AWARDS     20   ///< total number of endgame awards
-#endif
 #endif
 #define NUMSHOW_ENDGAME_AWARDS 14   ///< number of awards to display that will fit on screen
 
@@ -2230,6 +2096,8 @@ typedef struct
 	int snapshotAntiwarp[LAG_SAMPLES];
 	int snapshotCount;
 } lagometer_t;
+
+lagometer_t lagometer;
 
 /**
  * @enum sample_s
@@ -2436,17 +2304,14 @@ typedef struct cgs_s
 #ifdef FEATURE_RATING
 	qboolean dbSkillRatingReceived;
 #endif
-#ifdef FEATURE_PRESTIGE
-	qboolean dbPrestigeReceived;
-#endif
 	qboolean dbWeaponStatsReceived;
-	qboolean dbLastScoreReceived;
 	qboolean dbAwardsParsed;
 	char *dbAwardNames[NUM_ENDGAME_AWARDS];
 	team_t dbAwardTeams[NUM_ENDGAME_AWARDS];
 	char dbAwardNamesBuffer[1024];
 	int dbAwardsListOffset;
 	int dbLastRequestTime;
+	int dbLastScoreRequest;
 	int dbPlayerListOffset;
 	int dbWeaponListOffset;
 	cg_weaponstats_t dbWeaponStats[WS_MAX];
@@ -2505,9 +2370,6 @@ typedef struct cgs_s
 	int skillRating;
 	float mapProb;
 #endif
-#ifdef FEATURE_PRESTIGE
-	int prestige;
-#endif
 #ifdef FEATURE_MULTIVIEW
 	int mvAllowed;
 #endif
@@ -2531,7 +2393,9 @@ extern weaponInfo_t cg_weapons[MAX_WEAPONS];
 extern markPoly_t   cg_markPolys[MAX_MARK_POLYS];
 
 extern vmCvar_t cg_centertime;
-extern vmCvar_t cg_bobbing;
+extern vmCvar_t cg_bobup;
+extern vmCvar_t cg_bobpitch;
+extern vmCvar_t cg_bobroll;
 
 extern vmCvar_t cg_swingSpeed;
 extern vmCvar_t cg_shadows;
@@ -2609,6 +2473,9 @@ extern vmCvar_t pmove_msec;
 extern vmCvar_t cg_timescale;
 
 extern vmCvar_t cg_voiceSpriteTime;
+
+// particle switch
+extern vmCvar_t cg_wolfparticles;
 
 extern vmCvar_t cg_gameType;
 extern vmCvar_t cg_bloodTime;
@@ -2739,19 +2606,20 @@ extern vmCvar_t cg_fontScaleCN;
 extern vmCvar_t cg_optimizePrediction;
 extern vmCvar_t cg_debugPlayerHitboxes;
 
-// scoreboard
+#ifdef FEATURE_RATING
+// ratings scoreboard
 extern vmCvar_t cg_scoreboard;
 
+// scoreboard
 #define SCOREBOARD_XP    0
 #define SCOREBOARD_SR    1
-#define SCOREBOARD_PR    2
+#endif
 
 extern vmCvar_t cg_quickchat;
 
 extern vmCvar_t cg_drawspeed;
 
 extern vmCvar_t cg_visualEffects;  ///< turn invisible (0) / visible (1) visual effect (i.e airstrike plane, debris ...)
-extern vmCvar_t cg_bannerTime;
 
 // local clock flags
 #define LOCALTIME_ON                0x01
@@ -2761,9 +2629,6 @@ extern vmCvar_t cg_bannerTime;
 // crosshair name flags
 #define CROSSHAIR_CLASS             0x01
 #define CROSSHAIR_RANK              0x02
-#ifdef FEATURE_PRESTIGE
-#define CROSSHAIR_PRESTIGE          0x04
-#endif
 
 // projectile spawn effects at destination
 #define PS_FX_NONE   0
@@ -2854,7 +2719,6 @@ void CG_FilledBar(float x, float y, float w, float h, float *startColor, float *
 void CG_DrawStretchPic(float x, float y, float width, float height, qhandle_t hShader);
 
 float *CG_FadeColor(int startMsec, int totalMsec);
-float *CG_LerpColorWithAttack(vec4_t from, vec4_t to, int startMsec, int totalMsec, int attackMsec);
 float *CG_TeamColor(int team);
 void CG_TileClear(void);
 void CG_ColorForHealth(vec4_t hcolor);
@@ -2862,11 +2726,6 @@ void CG_GetColorForHealth(int health, vec4_t hcolor);
 
 qboolean CG_WorldCoordToScreenCoordFloat(vec3_t point, float *x, float *y);
 void CG_AddOnScreenText(const char *text, vec3_t origin);
-
-// string word wrapper
-char *CG_WordWrapString(const char *input, int maxLineChars, char *output, int maxOutputSize);
-// draws multiline strings
-void CG_DrawMultilineText(float x, float y, float scalex, float scaley, vec4_t color, const char *text, int lineHeight, float adjust, int limit, int style, int align, fontHelper_t *font);
 
 // new hud stuff
 void CG_DrawRect(float x, float y, float width, float height, float size, const float *color);
@@ -2892,7 +2751,6 @@ void CG_CheckForCursorHints(void);
 void CG_DrawTeamBackground(int x, int y, int w, int h, float alpha, int team);
 void CG_Text_Paint_Ext(float x, float y, float scalex, float scaley, vec4_t color, const char *text, float adjust, int limit, int style, fontHelper_t *font);
 void CG_Text_Paint_Centred_Ext(float x, float y, float scalex, float scaley, vec4_t color, const char *text, float adjust, int limit, int style, fontHelper_t *font);
-void CG_Text_Paint_RightAligned_Ext(float x, float y, float scalex, float scaley, vec4_t color, const char *text, float adjust, int limit, int style, fontHelper_t *font);
 void CG_Text_Paint(float x, float y, float scale, vec4_t color, const char *text, float adjust, int limit, int style);
 void CG_Text_PaintWithCursor_Ext(float x, float y, float scale, vec4_t color, const char *text, int cursorPos, const char *cursor, int limit, int style, fontHelper_t *font);
 void CG_Text_PaintWithCursor(float x, float y, float scale, vec4_t color, const char *text, int cursorPos, const char *cursor, int limit, int style);
@@ -2934,6 +2792,10 @@ void CG_AddRefEntityWithPowerups(refEntity_t *ent, int powerups, int team, entit
 void CG_NewClientInfo(int clientNum);
 sfxHandle_t CG_CustomSound(int clientNum, const char *soundName);
 void CG_ParseTeamXPs(int n);
+
+// particles
+extern qboolean initparticles;
+int CG_NewParticleArea(int num);
 
 // cg_predict.c
 void CG_BuildSolidList(void);
@@ -3018,7 +2880,6 @@ void CG_ImpactMark(qhandle_t markShader,
 
 // cg_particles.c
 void CG_ClearParticles(void);
-void CG_InitParticles(void);
 void CG_AddParticles(void);
 void CG_ParticleSnow(qhandle_t pshader, vec3_t origin, vec3_t origin2, int turb, float range, int snum);
 void CG_ParticleSmoke(qhandle_t pshader, centity_t *cent);
@@ -3185,7 +3046,7 @@ void CG_parseMapVoteTally(void);
 void CG_ExecuteNewServerCommands(int latestSequence);
 void CG_ParseServerinfo(void);
 void CG_ParseSysteminfo(void);
-void CG_ParseModInfo(void);
+void CG_ParseLegacyinfo(void);
 void CG_ParseWolfinfo(void);
 void CG_ParseSpawns(void);
 void CG_ParseServerVersionInfo(const char *pszVersionInfo);
@@ -3645,11 +3506,6 @@ void CG_LimboPanel_RenderMedal(panel_button_t *button);
 void CG_LimboPanel_RenderCounter(panel_button_t *button);
 void CG_LimboPanelRenderText_NoLMS(panel_button_t *button);
 void CG_LimboPanelRenderText_SkillsText(panel_button_t *button);
-#ifdef FEATURE_PRESTIGE
-void CG_LimboPanel_RenderPrestige(panel_button_t *button);
-void CG_LimboPanel_RenderPrestigeIcon(panel_button_t *button);
-void CG_LimboPanel_Prestige_Draw(panel_button_t *button);
-#endif
 
 void CG_LimboPanel_NameEditFinish(panel_button_t *button);
 
@@ -3738,17 +3594,11 @@ void CG_Debriefing_VoteButton_Draw(panel_button_t *button);
 void CG_Debriefing_NextButton_Draw(panel_button_t *button);
 void CG_Debriefing_ChatButton_Draw(panel_button_t *button);
 void CG_Debriefing_ReadyButton_Draw(panel_button_t *button);
-#ifdef FEATURE_PRESTIGE
-void CG_Debriefing_PrestigeButton_Draw(panel_button_t *button);
-#endif
 qboolean CG_Debriefing_ChatButton_KeyDown(panel_button_t *button, int key);
 qboolean CG_Debriefing_ReadyButton_KeyDown(panel_button_t *button, int key);
 qboolean CG_Debriefing_QCButton_KeyDown(panel_button_t *button, int key);
 qboolean CG_Debriefing_VoteButton_KeyDown(panel_button_t *button, int key);
 qboolean CG_Debriefing_NextButton_KeyDown(panel_button_t *button, int key);
-#ifdef FEATURE_PRESTIGE
-qboolean CG_Debriefing_PrestigeButton_KeyDown(panel_button_t *button, int key);
-#endif
 
 void CG_PanelButtonsRender_Button_Ext(rectDef_t *r, const char *text);
 
@@ -3763,10 +3613,6 @@ void CG_Debriefing_PlayerSR_Draw(panel_button_t *button);
 void CG_Debriefing_PlayerACC_Draw(panel_button_t *button);
 void CG_Debriefing_PlayerHS_Draw(panel_button_t *button);
 void CG_Debriefing_PlayerSkills_Draw(panel_button_t *button);
-#ifdef FEATURE_PRESTIGE
-void CG_Debriefing_PlayerPrestige_Draw(panel_button_t *button);
-void CG_Debriefing_PlayerPrestige_Note(panel_button_t *button);
-#endif
 void CG_Debriefing_PlayerHitRegions_Draw(panel_button_t *button);
 
 void CG_DebriefingPlayerWeaponStats_Draw(panel_button_t *button);
@@ -3796,9 +3642,6 @@ void CG_Debriefing_ParsePlayerKillsDeaths(void);
 void CG_Debriefing_ParsePlayerTime(void);
 void CG_Debriefing_ParseAwards(void);
 void CG_Debriefing_ParseSkillRating(void);
-#ifdef FEATURE_PRESTIGE
-void CG_Debriefing_ParsePrestige(void);
-#endif
 
 void CG_TeamDebriefingTeamSkillXP_Draw(panel_button_t *button);
 

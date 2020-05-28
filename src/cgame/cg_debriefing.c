@@ -148,7 +148,7 @@ panel_button_t debriefPlayerWeaponStatsListScroll =
 {
 	NULL,
 	NULL,
-	{ 18 + 168,                  256,        16, 96 },
+	{ 18 + 168,                  262,        16, 80 },
 	{ 1,                         0,          0,  0, 0, 0, 0, 0},
 	NULL,                        // font
 	CG_Debriefing_Scrollbar_KeyDown,// keyDown
@@ -638,62 +638,17 @@ panel_button_t debriefPlayerInfoHS =
 	0
 };
 
-#ifdef FEATURE_PRESTIGE
-panel_button_t debriefPlayerInfoPrestige =
-{
-	NULL,
-	NULL,
-	{ 170,                            142,   0, 0 },
-	{ 0,                              0,     0, 0, 0, 0, 0, 0},
-	&debriefPlayerInfoFont,           // font
-	NULL,                             // keyDown
-	NULL,                             // keyUp
-	CG_Debriefing_PlayerPrestige_Draw,
-	NULL,
-	0
-};
-
-panel_button_t debriefPlayerPrestigeButton =
-{
-	NULL,
-	"^3COLLECT POINT",
-	{ 110,                            216,88, 16 },
-	{ 0,                              0,  0,  0, 0, 0, 0, 0},
-	NULL,                             // font
-	CG_Debriefing_PrestigeButton_KeyDown,// keyDown
-	NULL,                             // keyUp
-	CG_Debriefing_PrestigeButton_Draw,
-	NULL,
-	0
-};
-
-panel_button_t debriefPlayerPrestigeNote =
-{
-	NULL,
-	NULL,
-	{ 110,                            162,   0, 0 },
-	{ 0,                              0,     0, 0, 0, 0, 0, 0},
-	&debriefPlayerInfoFont,           // font
-	NULL,                             // keyDown
-	NULL,                             // keyUp
-	CG_Debriefing_PlayerPrestige_Note,
-	NULL,
-	0
-};
-#endif
-
 panel_button_t debriefPlayerInfoHitRegions =
 {
 	NULL,
 	NULL,
-	{ 146,                              170,   0, 0 },
+	{ 146,                              156,   0, 0 },
 	{ 0,                                0,     0, 0, 0, 0, 0, 0},
 	&debriefPlayerInfoFont,             // font
 	NULL,                               // keyDown
 	NULL,                               // keyUp
 	CG_Debriefing_PlayerHitRegions_Draw,
 	NULL,
-	0
 };
 
 #define PLAYERHEADER_SKILLS(number)           \
@@ -736,11 +691,6 @@ panel_button_t *debriefPanelButtons[] =
 	&debriefPlayerInfoSkills4,
 	&debriefPlayerInfoSkills5,
 	&debriefPlayerInfoSkills6,
-#ifdef FEATURE_PRESTIGE
-	&debriefPlayerInfoPrestige,
-	&debriefPlayerPrestigeButton,
-	&debriefPlayerPrestigeNote,
-#endif
 	&debriefPlayerInfoHitRegions,
 	&debriefPlayerWeaponStatsHeader,&debriefPlayerWeaponStatsNameHeader,  &debriefPlayerWeaponStatsShotsHeader,&debriefPlayerWeaponStatsHitsHeader,  &debriefPlayerWeaponStatsKillsHeader,
 	&debriefPlayerWeaponStatsList,  &debriefPlayerWeaponStatsListScroll,
@@ -1443,7 +1393,7 @@ void CG_Debriefing_ChatEdit_Draw(panel_button_t *button)
 		}
 	}
 	while (CG_Text_Width_Ext(buffer + offset, button->font->scalex, 0, button->font->font) > button->rect.w);
-
+        
 	switch (cgs.dbChatMode)
 	{
 	case 0:
@@ -1460,7 +1410,7 @@ void CG_Debriefing_ChatEdit_Draw(panel_button_t *button)
 		break;
 	}
 
-	CG_Text_PaintWithCursor_Ext(button->rect.x, button->rect.y + button->rect.h, button->font->scalex, *color, buffer + (button->data[2] <= offset ? button->data[2] : offset), button->data[2] <= offset ? 0 : button->data[2] - offset, trap_Key_GetOverstrikeMode() ? "_" : "|", offset ? Q_UTF8_Strlen(buffer + offset) : 0, button->font->style, button->font->font);
+        CG_Text_PaintWithCursor_Ext(button->rect.x, button->rect.y + button->rect.h, button->font->scalex, *color, buffer + (button->data[2] <= offset ? button->data[2] : offset), button->data[2] <= offset ? 0 : button->data[2] - offset, trap_Key_GetOverstrikeMode() ? "_" : "|", offset ? Q_UTF8_Strlen(buffer + offset) : 0, button->font->style, button->font->font);
 }
 
 /**
@@ -1577,10 +1527,6 @@ void CG_Debriefing_Startup(void)
 #ifdef FEATURE_RATING
 	cgs.dbSkillRatingReceived = qfalse;
 #endif
-#ifdef FEATURE_PRESTIGE
-	cgs.dbPrestigeReceived = qfalse;
-#endif
-	cgs.dbLastScoreReceived = qfalse;
 
 	cgs.dbLastRequestTime = 0;
 	cgs.dbSelectedClient  = cg.clientNum;
@@ -1663,14 +1609,6 @@ void CG_Debriefing_InfoRequests(void)
 	}
 #endif
 
-#ifdef FEATURE_PRESTIGE
-	if (!cgs.dbPrestigeReceived && cgs.prestige)
-	{
-		trap_SendClientCommand("impr");
-		return;
-	}
-#endif
-
 	if (!cgs.dbPlayerKillsDeathsReceived)
 	{
 		trap_SendClientCommand("impkd");
@@ -1690,8 +1628,9 @@ void CG_Debriefing_InfoRequests(void)
 	}
 
 	// if nothing else is pending, ask for scores
-	if (!cgs.dbLastScoreReceived)
+	if (!cgs.dbLastScoreRequest || (cg.time - cgs.dbLastScoreRequest) > 1000)
 	{
+		cgs.dbLastScoreRequest = cg.time;
 		trap_SendClientCommand("score");
 	}
 }
@@ -1839,11 +1778,7 @@ void CG_DebriefingPlayerWeaponStats_Draw(panel_button_t *button)
 		CG_Text_Paint_Ext(button->rect.x, y, button->font->scalex, button->font->scaley, button->font->colour, aWeaponInfo[pos].pszName, 0, 0, 0, button->font->font);
 		CG_Text_Paint_Ext(button->rect.x + 62, y, button->font->scalex, button->font->scaley, button->font->colour, va("%i", cgs.dbWeaponStats[pos].numShots), 0, 0, 0, button->font->font);
 		CG_Text_Paint_Ext(button->rect.x + 102, y, button->font->scalex, button->font->scaley, button->font->colour, va("%i", cgs.dbWeaponStats[pos].numHits), 0, 0, 0, button->font->font);
-		// syringe doesn't have kill stats
-		if (pos != WS_SYRINGE)
-		{
-			CG_Text_Paint_Ext(button->rect.x + 132, y, button->font->scalex, button->font->scaley, button->font->colour, va("%i", cgs.dbWeaponStats[pos].numKills), 0, 0, 0, button->font->font);
-		}
+		CG_Text_Paint_Ext(button->rect.x + 132, y, button->font->scalex, button->font->scaley, button->font->colour, va("%i", cgs.dbWeaponStats[pos].numKills), 0, 0, 0, button->font->font);
 
 		y += 12;
 	}
@@ -2148,22 +2083,6 @@ void CG_Debriefing_ParseSkillRating(void)
 		cgs.clientinfo[i].deltaRating = atof(CG_Argv(i * 2 + 2));
 	}
 	cgs.dbSkillRatingReceived = qtrue;
-}
-#endif
-
-#ifdef FEATURE_PRESTIGE
-/**
- * @brief CG_Debriefing_ParsePrestige
- */
-void CG_Debriefing_ParsePrestige(void)
-{
-	int i;
-
-	for (i = 0; i < cgs.maxclients; i++)
-	{
-		cgs.clientinfo[i].prestige = atoi(CG_Argv(i + 1));
-	}
-	cgs.dbPrestigeReceived = qtrue;
 }
 #endif
 
@@ -2644,6 +2563,7 @@ void CG_Debriefing_PlayerSkills_Draw(panel_button_t *button)
 	x += button->rect.w + 8;
 	for (i = ci->skill[button->data[0]]; i > 0; i--)
 	{
+
 		CG_DrawPicST(x, button->rect.y, button->rect.w, button->rect.h, 0, 0, 1.f, 0.5f, cgs.media.limboStar_roll);
 
 		x += button->rect.w + 2;
@@ -2686,41 +2606,6 @@ void CG_Debriefing_PlayerHitRegions_Draw(panel_button_t *button)
 	float  w;
 	vec4_t colorH, colorA, colorB, colorL;
 
-#ifdef FEATURE_PRESTIGE
-	int i, j, cnt = 0, skillMax;
-
-	// hide if we need to display prestige collection note
-	if (cgs.prestige && cgs.dbSelectedClient == cg.clientNum &&
-	    cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS && cgs.gametype != GT_WOLF_CAMPAIGN)
-	{
-		// count the number of maxed out skills
-		for (i = 0; i < SK_NUM_SKILLS; i++)
-		{
-			skillMax = 0;
-
-			// check skill max level
-			for (j = NUM_SKILL_LEVELS - 1; j >= 0; j--)
-			{
-				if (GetSkillTableData(i)->skillLevels[j] >= 0)
-				{
-					skillMax = j;
-					break;
-				}
-			}
-
-			if (cgs.clientinfo[cg.clientNum].skill[i] >= skillMax)
-			{
-				cnt++;
-			}
-		}
-
-		if (cnt >= SK_NUM_SKILLS)
-		{
-			return;
-		}
-	}
-#endif
-
 	w = CG_Text_Width_Ext("Head: ", button->font->scalex, 0, button->font->font);
 
 	// register hitregions only once (when required)
@@ -2745,7 +2630,7 @@ void CG_Debriefing_PlayerHitRegions_Draw(panel_button_t *button)
 		imgL = trap_R_RegisterShaderNoMip("gfx/misc/hitregion_legs.tga");
 	}
 
-	CG_Text_Paint_Ext(button->rect.x - w, button->rect.y + 8, button->font->scalex, button->font->scaley, button->font->colour, "Region Hits:", 0, 0, ITEM_TEXTSTYLE_SHADOWED, button->font->font);
+	CG_Text_Paint_Ext(button->rect.x - w, button->rect.y, button->font->scalex, button->font->scaley, button->font->colour, "Region Hits:", 0, 0, ITEM_TEXTSTYLE_SHADOWED, button->font->font);
 
 	CG_Text_Paint_Ext(button->rect.x - w, button->rect.y + 2 * 12, button->font->scalex, button->font->scaley, button->font->colour, "Head:", 0, 0, ITEM_TEXTSTYLE_SHADOWED, button->font->font);
 	CG_Text_Paint_Ext(button->rect.x, button->rect.y + 2 * 12, button->font->scalex, button->font->scaley, button->font->colour, va("%2.0f%%", hitsHead * 100), 0, 0, ITEM_TEXTSTYLE_SHADOWED, button->font->font);
@@ -2797,80 +2682,6 @@ void CG_Debriefing_PlayerHitRegions_Draw(panel_button_t *button)
 		trap_R_SetColor(NULL);
 	}
 }
-
-#ifdef FEATURE_PRESTIGE
-/**
- * @brief CG_Debriefing_PlayerPrestige_Draw
- * @param[in] button
- */
-void CG_Debriefing_PlayerPrestige_Draw(panel_button_t *button)
-{
-	clientInfo_t *ci;
-	float        w;
-
-	if (!cgs.prestige || cgs.gametype == GT_WOLF_STOPWATCH || cgs.gametype == GT_WOLF_LMS || cgs.gametype == GT_WOLF_CAMPAIGN)
-	{
-		return;
-	}
-
-	ci = CG_Debriefing_GetSelectedClientInfo();
-	w  = CG_Text_Width_Ext("Prestige: ", button->font->scalex, 0, button->font->font);
-
-	CG_Text_Paint_Ext(button->rect.x - w, button->rect.y, button->font->scalex, button->font->scaley, button->font->colour, CG_TranslateString("Prestige:"), 0, 0, ITEM_TEXTSTYLE_SHADOWED, button->font->font);
-	CG_Text_Paint_Ext(button->rect.x, button->rect.y, button->font->scalex, button->font->scaley, button->font->colour, va("^2%i", ci->prestige), 0, 0, ITEM_TEXTSTYLE_SHADOWED, button->font->font);
-}
-
-/**
- * @brief CG_Debriefing_PlayerPrestige_Note
- * @param[in] button
- */
-void CG_Debriefing_PlayerPrestige_Note(panel_button_t *button)
-{
-	int i, j, cnt = 0, skillMax, h;
-
-	if (!cgs.prestige || cgs.gametype == GT_WOLF_STOPWATCH || cgs.gametype == GT_WOLF_LMS || cgs.gametype == GT_WOLF_CAMPAIGN)
-	{
-		return;
-	}
-
-	if (cgs.dbSelectedClient != cg.clientNum)
-	{
-		return;
-	}
-
-	// count the number of maxed out skills
-	for (i = 0; i < SK_NUM_SKILLS; i++)
-	{
-		skillMax = 0;
-
-		// check skill max level
-		for (j = NUM_SKILL_LEVELS - 1; j >= 0; j--)
-		{
-			if (GetSkillTableData(i)->skillLevels[j] >= 0)
-			{
-				skillMax = j;
-				break;
-			}
-		}
-
-		if (cgs.clientinfo[cg.clientNum].skill[i] >= skillMax)
-		{
-			cnt++;
-		}
-	}
-
-	if (cnt < SK_NUM_SKILLS)
-	{
-		return;
-	}
-
-	h = CG_Text_Height_Ext("A", button->font->scalex, 0, button->font->font);
-
-	CG_DrawMultilineText(button->rect.x, button->rect.y, button->font->scalex, button->font->scaley, button->font->colour,
-	                     CG_TranslateString("You may now collect\na prestige point.\n\nCollection resets\nskill levels."),
-	                     2 * h, 0, 0, ITEM_TEXTSTYLE_SHADOWED, ITEM_ALIGN_LEFT, button->font->font);
-}
-#endif
 
 /**
  * @brief CG_Debriefing_PlayerACC_Draw
@@ -2928,7 +2739,7 @@ void CG_Debriefing_PlayerXP_Draw(panel_button_t *button)
  */
 void CG_Debriefing_PlayerSR_Draw(panel_button_t *button)
 {
-	if (cgs.skillRating && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS)
+	if (cgs.skillRating)
 	{
 		clientInfo_t *ci;
 		float        w;
@@ -3277,72 +3088,6 @@ qboolean CG_Debriefing_NextButton_KeyDown(panel_button_t *button, int key)
 	return qfalse;
 }
 
-#ifdef FEATURE_PRESTIGE
-/**
- * @brief CG_Debriefing_PrestigeButton_KeyDown
- * @param button - unused
- * @param[in] key
- * @return
- */
-qboolean CG_Debriefing_PrestigeButton_KeyDown(panel_button_t *button, int key)
-{
-	int i, j, skillMax, cnt = 0;
-
-	if (key == K_MOUSE1)
-	{
-		if (!cg.snap)
-		{
-			return qfalse;
-		}
-
-		// count the number of maxed out skills
-		for (i = 0; i < SK_NUM_SKILLS; i++)
-		{
-			skillMax = 0;
-
-			// check skill max level
-			for (j = NUM_SKILL_LEVELS - 1; j >= 0; j--)
-			{
-				if (GetSkillTableData(i)->skillLevels[j] >= 0)
-				{
-					skillMax = j;
-					break;
-				}
-			}
-
-			if (cgs.clientinfo[cg.clientNum].skill[i] >= skillMax)
-			{
-				cnt++;
-			}
-		}
-
-		if (cnt < SK_NUM_SKILLS)
-		{
-			return qfalse;
-		}
-
-		trap_SendClientCommand("imcollectpr");
-
-		// refresh data
-		cgs.dbPrestigeReceived = qfalse;
-
-		// refresh value display immediately to hide delayed effect
-		cgs.clientinfo[cg.clientNum].prestige += 1;
-
-		// reset skills client side only to keep current XPs value display
-		// server sync will happen at next map
-		for (i = 0; i < SK_NUM_SKILLS; i++)
-		{
-			cgs.clientinfo[cg.clientNum].skill[i] = 0;
-		}
-
-		return qtrue;
-	}
-
-	return qfalse;
-}
-#endif
-
 /**
  * @brief CG_Debriefing_VoteButton_Draw
  * @param[in] button
@@ -3365,60 +3110,6 @@ void CG_Debriefing_NextButton_Draw(panel_button_t *button)
 {
 	CG_PanelButtonsRender_Button(button);
 }
-
-#ifdef FEATURE_PRESTIGE
-/**
- * @brief CG_Debriefing_PrestigeButton_Draw
- * @param[in] button
- */
-void CG_Debriefing_PrestigeButton_Draw(panel_button_t *button)
-{
-	int i, j, cnt = 0, skillMax;
-
-	if (cgs.gametype == GT_WOLF_CAMPAIGN || cgs.gametype == GT_WOLF_STOPWATCH || cgs.gametype == GT_WOLF_LMS)
-	{
-		return;
-	}
-
-	if (!cgs.prestige)
-	{
-		return;
-	}
-
-	if (cgs.dbSelectedClient != cg.clientNum)
-	{
-		return;
-	}
-
-	// count the number of maxed out skills
-	for (i = 0; i < SK_NUM_SKILLS; i++)
-	{
-		skillMax = 0;
-
-		// check skill max level
-		for (j = NUM_SKILL_LEVELS - 1; j >= 0; j--)
-		{
-			if (GetSkillTableData(i)->skillLevels[j] >= 0)
-			{
-				skillMax = j;
-				break;
-			}
-		}
-
-		if (cgs.clientinfo[cg.clientNum].skill[i] >= skillMax)
-		{
-			cnt++;
-		}
-	}
-
-	if (cnt < SK_NUM_SKILLS)
-	{
-		return;
-	}
-
-	CG_PanelButtonsRender_Button(button);
-}
-#endif
 
 /**
  * @brief CG_Debriefing_ChatEditFinish
@@ -3733,7 +3424,14 @@ void CG_Debriefing_MissionTitle_Draw(panel_button_t *button)
 
 	secs = MAX(60 - (cg.time - cgs.intermissionStartTime) / 1000, 0);
 
-	s = va("%s%i ^9%s", secs < 4 ? "^1" : "^2", secs, secs > 1 ? CG_TranslateString("SECS TO NEXT MAP") : CG_TranslateString("SEC TO NEXT MAP"));
+	if (secs > 1)
+	{
+		s = va("^2%i ^9%s", secs, CG_TranslateString("SECS TO NEXT MAP"));
+	}
+	else
+	{
+		s = va("^2%i ^9%s", secs, CG_TranslateString("SEC TO NEXT MAP"));
+	}
 
 	w = CG_Text_Width_Ext(s, 0.25f, 0, &cgs.media.limboFont1);
 	x = button->rect.x + button->rect.w - w - 4;
@@ -3743,9 +3441,6 @@ void CG_Debriefing_MissionTitle_Draw(panel_button_t *button)
 
 const char *awardNames[NUM_ENDGAME_AWARDS] =
 {
-#ifdef FEATURE_PRESTIGE
-	"Most Prestigious Player",
-#endif
 	"Highest Ranking Officer",
 #ifdef FEATURE_RATING
 	"Highest Skill Rating",

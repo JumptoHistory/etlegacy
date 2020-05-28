@@ -400,7 +400,6 @@ extern cvar_t *sv_timeout;
 extern cvar_t *sv_zombietime;
 extern cvar_t *sv_rconPassword;
 extern cvar_t *sv_privatePassword;
-extern cvar_t *sv_hidden;
 extern cvar_t *sv_allowDownload;
 extern cvar_t *sv_friendlyFire;
 extern cvar_t *sv_maxlives;
@@ -469,7 +468,7 @@ extern cvar_t *sv_wh_check_fov;
 extern cvar_t *sv_demopath;
 extern cvar_t *sv_demoState;
 extern cvar_t *sv_autoDemo;
-extern cvar_t *sv_freezeDemo;
+extern cvar_t *cl_freezeDemo;
 extern cvar_t *sv_demoTolerant;
 
 extern cvar_t *sv_ipMaxClients; ///< limit client connection
@@ -550,7 +549,7 @@ void SV_ChangeMaxClients(void);
 void SV_SpawnServer(const char *server);
 void SV_WriteAttackLog(const char *log);
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 #define SV_WriteAttackLogD(x) SV_WriteAttackLog(x)
 #else
 #define SV_WriteAttackLogD(x)
@@ -563,7 +562,6 @@ void SV_ExecuteClientMessage(client_t *cl, msg_t *msg);
 void SV_UserinfoChanged(client_t *cl);
 void SV_UpdateUserinfo_f(client_t *cl);
 void SV_ClientEnterWorld(client_t *client, usercmd_t *cmd);
-qboolean SV_CheckForMsgOverflow(client_t *client, msg_t *msg);
 void SV_DropClient(client_t *drop, const char *reason);
 void SV_ExecuteClientCommand(client_t *cl, const char *s, qboolean clientOK, qboolean premaprestart);
 void SV_ClientThink(client_t *cl, usercmd_t *cmd);

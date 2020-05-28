@@ -134,7 +134,7 @@ void SV_GetChallenge(netadr_t from)
  *
  * @note maybe we want to have more control over localhost clients in future.
  * So we let localhost connect since bots don't connect from SV_DirectConnect
- * where SV_isClientIPValidToConnect is done.
+ * where SV_IsFakeIpConnection is done.
  */
 static qboolean SV_isClientIPValidToConnect(netadr_t from)
 {
@@ -180,7 +180,7 @@ static qboolean SV_isClientIPValidToConnect(netadr_t from)
 			if (count > max)
 			{
 				// no dev print - let admins see this
-				Com_Printf("SV_isClientIPValidToConnect: too many connections from %s\n", clientIP);
+				Com_Printf("SV_IsFakeIpConnection: too many connections from %s\n", clientIP);
 
 				return qfalse;
 			}
@@ -334,11 +334,6 @@ void SV_DirectConnect(netadr_t from)
 
 	challenge = atoi(Info_ValueForKey(userinfo, "challenge"));
 	qport     = atoi(Info_ValueForKey(userinfo, "qport"));
-
-	// we don't need these keys after connection, release some space in userinfo
-	Info_RemoveKey(userinfo, "challenge");
-	Info_RemoveKey(userinfo, "qport");
-	Info_RemoveKey(userinfo, "protocol");
 
 	// quick reject
 	for (i = 0, cl = svs.clients ; i < sv_maxclients->integer ; i++, cl++)
@@ -595,27 +590,6 @@ gotnewcl:
 }
 
 /**
- * @brief Check if the message has overflowed and if it has then drop the client.
- *
- * @param client[in,out] client to whon the message would be sent
- * @param msg[in,out] the message data which would be sent
- * @return did the message buffer overflow
- */
-qboolean SV_CheckForMsgOverflow(client_t *client, msg_t *msg)
-{
-    if (!msg->overflowed)
-    {
-        return qfalse;
-    }
-
-    Com_Printf("WARNING: msg overflowed for %s\n", client->name);
-    MSG_Clear(msg);
-
-    SV_DropClient(client, "Msg overflowed");
-    return qtrue;
-}
-
-/**
  * @brief Called when the player is totally leaving the server, either willingly
  * or unwillingly.  This is NOT called if the entire server is quiting
  * or crashing -- SV_FinalCommand() will handle that
@@ -726,13 +700,8 @@ void SV_SendClientGameState(client_t *client)
 	msg_t         msg;
 	byte          msgBuffer[MAX_MSGLEN];
 
-	Com_DPrintf( "SV_SendClientGameState() for %s\n", client->name );
-
-	if (client->state != CS_PRIMED)
-	{
-		Com_DPrintf("Going from CS_CONNECTED to CS_PRIMED for %s\n", client->name);
-	}
-
+	Com_DPrintf("SV_SendClientGameState() for %s\n", client->name);
+	Com_DPrintf("Going from CS_CONNECTED to CS_PRIMED for %s\n", client->name);
 	client->state         = CS_PRIMED;
 	client->pureAuthentic = 0;
 	client->gotCP         = qfalse;
@@ -789,11 +758,6 @@ void SV_SendClientGameState(client_t *client)
 
 	// write the checksum feed
 	MSG_WriteLong(&msg, sv.checksumFeed);
-
-    if (SV_CheckForMsgOverflow(client, &msg))
-    {
-        return;
-    }
 
 	// debug info
 	Com_DPrintf("Sending %i bytes in gamestate to client: %i\n", msg.cursize, (int) (client - svs.clients));
@@ -2055,17 +2019,25 @@ static void SV_UserMove(client_t *cl, msg_t *msg, qboolean delta)
 	// save time for ping calculation
 	cl->frames[cl->messageAcknowledge & PACKET_MASK].messageAcked = svs.time;
 
+	// catch the no-cp-yet situation before SV_ClientEnterWorld
+	// if CS_ACTIVE, then it's time to trigger a new gamestate emission
+	// if not, then we are getting remaining parasite usermove commands, which we should ignore
+	if (sv_pure->integer != 0 && cl->pureAuthentic == 0 && !cl->gotCP)
+	{
+		if (cl->state == CS_ACTIVE)
+		{
+			// we didn't get a cp yet, don't assume anything and just send the gamestate all over again
+			Com_DPrintf("%s: didn't get cp command, resending gamestate\n", rc(cl->name));
+			SV_SendClientGameState(cl);
+		}
+
+		return;
+	}
+
 	// if this is the first usercmd we have received
 	// this gamestate, put the client into the world
 	if (cl->state == CS_PRIMED)
 	{
-		if (sv_pure->integer != 0 && !cl->gotCP) 
-		{
-			// we didn't get a cp yet, don't assume anything and just send the gamestate all over again
-			Com_DPrintf( "%s: didn't get cp command, resending gamestate\n", cl->name );
-			SV_SendClientGameState( cl );
-			return;
-		}
 		SV_ClientEnterWorld(cl, &cmds[0]);
 		// the moves can be processed normaly
 	}
@@ -2154,7 +2126,7 @@ void SV_ExecuteClientMessage(client_t *cl, msg_t *msg)
 	{
 		// usually only hackers create messages like this
 		// it is more annoying for them to let them hanging
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 		SV_DropClient(cl, "DEBUG: illegible client message or invalid server id");
 #endif
 		return;
@@ -2169,7 +2141,7 @@ void SV_ExecuteClientMessage(client_t *cl, msg_t *msg)
 	{
 		// usually only hackers create messages like this
 		// it is more annoying for them to let them hanging
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 		SV_DropClient(cl, "DEBUG: illegible client message");
 #endif
 		cl->reliableAcknowledge = cl->reliableSequence;

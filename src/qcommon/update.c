@@ -82,15 +82,17 @@ void Com_CheckAutoUpdate(void)
 	}
 
 	info[0] = 0;
-	Info_SetValueForKey(info, "version", ETLEGACY_VERSION);
+	Info_SetValueForKey(info, "version", ETLEGACY_VERSION_SHORT);
 	Info_SetValueForKey(info, "platform", CPUSTRING);
 
 #ifndef DEDICATED
 	Info_SetValueForKey(info, "lang", Cvar_VariableString("cl_lang"));
 #endif  // DEDICATED
 
-	Info_SetValueForKey(info, va("%s_%s.pk3", MODNAME, ETLEGACY_VERSION),
-	                    Com_MD5File(va("%s/%s_%s.pk3", MODNAME, MODNAME, ETLEGACY_VERSION), 0, NULL, 0));
+	Info_SetValueForKey(info, va("etl_bin_%s.pk3", ETLEGACY_VERSION_SHORT),
+	                    Com_MD5File(va("legacy/etl_bin_%s.pk3", ETLEGACY_VERSION_SHORT), 0, NULL, 0));
+	Info_SetValueForKey(info, va("pak3_%s.pk3", ETLEGACY_VERSION_SHORT),
+	                    Com_MD5File(va("legacy/pak3_%s.pk3", ETLEGACY_VERSION_SHORT), 0, NULL, 0));
 
 	NET_OutOfBandPrint(
 #ifdef DEDICATED
@@ -121,7 +123,9 @@ void Com_GetAutoUpdate(void)
 	{
 #ifndef DEDICATED
 		Sys_OpenURL("http://www.etlegacy.com", qtrue);
+
 #endif
+
 		return;
 	}
 
@@ -162,7 +166,7 @@ void Com_GetAutoUpdate(void)
 	CL_Disconnect(qtrue);
 	Con_Close();
 
-	Q_strncpyz(cls.servername, "ET:Legacy Update Server", sizeof(cls.servername));
+	Q_strncpyz(cls.servername, "ET:L Update Server", sizeof(cls.servername));
 #endif
 
 	if (autoupdate.autoupdateServer.type == NA_BAD)
@@ -191,7 +195,7 @@ void Com_GetAutoUpdate(void)
 	clc.connectPacketCount = 0;
 
 	// server connection string
-	Cvar_Set("cl_currentServerAddress", "ET:Legacy Update Server");
+	Cvar_Set("cl_currentServerAddress", "ET:L Update Server");
 #endif
 
 	Com_CheckUpdateStarted();
@@ -243,7 +247,7 @@ static void Com_RunUpdateBinary(const char *updateBinary, const char *updateConf
 	Sys_StartProcess(cmdBuffer, qtrue);
 
 	// reinitialize the filesystem if the game directory or checksum has changed
-	// - after mod update
+	// - after Legacy mod update
 #ifdef DEDICATED
 	FS_ConditionalRestart(sv.checksumFeed);
 #else

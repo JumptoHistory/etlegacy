@@ -807,39 +807,60 @@ static void Upload32(unsigned *data,
 
 	if (mipmap)
 	{
-		int miplevel = 0;
-
-		while (scaled_width > 1 || scaled_height > 1)
+		if (glConfigExt.generateMipmapAvailable)
 		{
-			R_MipMap((byte *)scaledBuffer, scaled_width, scaled_height);
-			scaled_width  >>= 1;
-			scaled_height >>= 1;
-			if (scaled_width < 1)
+			glHint(GL_GENERATE_MIPMAP_HINT, GL_NICEST);	// make sure its nice
+			if (glGenerateMipmap)
 			{
-				scaled_width = 1;
+				glGenerateMipmap(GL_TEXTURE_2D);
 			}
-			if (scaled_height < 1)
+			else
 			{
-				scaled_height = 1;
+				glGenerateMipmapEXT(GL_TEXTURE_2D);
 			}
-			miplevel++;
+			/*else
+			{
+				qglTexParameteri(GL_TEXTURE_2D, GL_GENERATE_MIPMAP_SGIS, GL_TRUE);
+			}*/
+			qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);   // default to trilinear*/
+		}
+		else
+		{
+			int miplevel = 0;
+			while (scaled_width > 1 || scaled_height > 1)
+			{
+				R_MipMap((byte *)scaledBuffer, scaled_width, scaled_height);
+				scaled_width  >>= 1;
+				scaled_height >>= 1;
+				if (scaled_width < 1)
+				{
+					scaled_width = 1;
+				}
+				if (scaled_height < 1)
+				{
+					scaled_height = 1;
+				}
+				miplevel++;
 
-			if (r_colorMipLevels->integer)
-			{
-				R_BlendOverTexture((byte *)scaledBuffer, scaled_width * scaled_height, mipBlendColors[miplevel]);
-			}
+				if (r_colorMipLevels->integer)
+				{
+					R_BlendOverTexture((byte *)scaledBuffer, scaled_width * scaled_height, mipBlendColors[miplevel]);
+				}
 
-			qglTexImage2D(GL_TEXTURE_2D, miplevel, internalFormat, scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, scaledBuffer);
+				qglTexImage2D(GL_TEXTURE_2D, miplevel, internalFormat, scaled_width, scaled_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, scaledBuffer);
+			}
+			qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, miplevel);
 		}
 	}
 done:
 
 	if (mipmap)
 	{
-		if (textureFilterAnisotropic)
+		//if (textureFilterAnisotropic)
 		{
-			qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT,
-							 (GLint)Com_Clamp(1, maxAnisotropy, r_extMaxAnisotropy->integer));
+			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT,
+							 //(GLint)Com_Clamp(1, maxAnisotropy, r_extMaxAnisotropy->integer));
+				r_extMaxAnisotropy->value);
 		}
 
 		qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter_min);
@@ -847,9 +868,9 @@ done:
 	}
 	else
 	{
-		if (textureFilterAnisotropic)
+		//if (textureFilterAnisotropic)
 		{
-			qglTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1);
+			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.f);
 		}
 
 		qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);

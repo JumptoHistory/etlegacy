@@ -439,6 +439,13 @@ extern cvar_t *cl_defaultProfile;
 
 extern cvar_t *cl_consoleKeys;
 
+// Custom
+extern cvar_t  *cl_mapConfigDirectory;
+extern cvar_t  *cl_promptColor;
+extern cvar_t  *cl_consoleAlpha;
+extern cvar_t  *cl_consoleRGB;
+extern cvar_t  *cl_slashCommand;
+
 //=================================================
 
 // cl_main
@@ -481,6 +488,8 @@ void CL_TranslateStringMod(const char *string, char *dest_buffer);
 void CL_OpenURL(const char *url);
 
 void CL_Record(const char *name);
+
+void CL_RunMod_f(void);
 
 // cl_avi
 
@@ -793,6 +802,9 @@ void DB_InsertFavorite(const char *profile, int source, const char *name, const 
 void DB_DeleteFavorite(const char *profile, const char *address);
 void DB_UpdateFavorite(const char *profile, const char *address);
 void DB_LoadFavorites(const char *profile);
+
+void DB_InsertWhitelist(const char *key, const char *name);
+qboolean DB_IsWhitelisted(const char *pakName, const char *hash);
 
 void CL_InitServerInfo(serverInfo_t *server, netadr_t *address);
 #endif

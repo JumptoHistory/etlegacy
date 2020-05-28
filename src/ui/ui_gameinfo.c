@@ -236,8 +236,8 @@ int QDECL UI_SortArenas(const void *a, const void *b)
 {
 	const mapInfo ca = *(const mapInfo *)a;
 	const mapInfo cb = *(const mapInfo *)b;
-	char          cleanNameA[MAX_STRING_CHARS];
-	char          cleanNameB[MAX_STRING_CHARS];
+	char    cleanNameA[MAX_STRING_CHARS];
+	char    cleanNameB[MAX_STRING_CHARS];
 
 	Q_strncpyz(cleanNameA, ca.mapName, sizeof(cleanNameA));
 	Q_strncpyz(cleanNameB, cb.mapName, sizeof(cleanNameB));
@@ -267,8 +267,8 @@ void UI_LoadArenas(void)
 	for (i = 0; i < numdirs; i++, dirptr += dirlen + 1)
 	{
 		dirlen = strlen(dirptr);
-		Q_strcpy(filename, "scripts/");
-		Q_strcat(filename, 128, dirptr);
+		strcpy(filename, "scripts/");
+		strcat(filename, dirptr);
 		UI_LoadArenasFromFile(filename);
 	}
 
@@ -646,14 +646,14 @@ void UI_LoadCampaigns(void)
 	for (i = 0; i < numdirs && uiInfo.campaignCount < MAX_CAMPAIGNS; i++, dirptr += dirlen + 1)
 	{
 		dirlen = strlen(dirptr);
-		Q_strcpy(filename, "scripts/");
-		Q_strcat(filename, 128, dirptr);
+		strcpy(filename, "scripts/");
+		strcat(filename, dirptr);
 		UI_LoadCampaignsFromFile(filename);
 	}
 
 	if (UI_OutOfMemory())
 	{
-		trap_Print(S_COLOR_YELLOW "WARNING: not enough memory in pool to load all campaigns\n");
+		trap_Print(S_COLOR_YELLOW "WARNING: not anough memory in pool to load all campaigns\n");
 	}
 
 	// Sort the campaigns for single player

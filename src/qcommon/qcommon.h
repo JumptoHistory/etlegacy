@@ -654,7 +654,6 @@ modules of the program.
 */
 
 cvar_t *Cvar_Get(const char *varName, const char *value, int flags);
-cvar_t *Cvar_GetAndDescribe(const char *varName, const char *value, int flags, const char *description);
 // creates the variable if it doesn't exist, or returns the existing one
 // if it exists, the value will not be changed, but flags will be ORed in
 // that allows variables to be unarchived without needing bitflags
@@ -743,9 +742,8 @@ issues.
 ==============================================================
 */
 
-// ET: Legacy specific - used by engine code
-#define BASEGAME        "etmain"
-#define DEFAULT_MODGAME MODNAME
+#define BASEGAME "etmain"
+#define DEFAULT_MODGAME "legacy" /// see files.c
 
 /**
  * @struct modHash
@@ -758,8 +756,8 @@ typedef struct
 } modHash;
 extern modHash modHashes;
 
-//#define IS_DEFAULT_MOD (Q_stricmp(Cvar_VariableString("fs_game"), DEFAULT_MODGAME) == 0)
-#define IS_DEFAULT_MOD (modHashes.defaultMod == modHashes.currentMod)
+//#define IS_LEGACY_MOD (Q_stricmp(Cvar_VariableString("fs_game"), DEFAULT_MODGAME) == 0)
+#define IS_LEGACY_MOD (modHashes.defaultMod == modHashes.currentMod)
 
 // referenced flags
 // these are in loop specific order so don't change the order
@@ -819,7 +817,6 @@ void FS_CheckFilenameIsNotExecutable(const char *fileName, const char *function)
 //void FS_CheckFilenameIsMutable(const char *filename, const char *function);
 void FS_Remove(const char *osPath);
 
-char *FS_NormalizePath(const char *path);
 char *FS_BuildOSPath(const char *base, const char *game, const char *qpath);
 
 int FS_LoadStack(void);
@@ -949,21 +946,17 @@ qboolean FS_UnzipTo(const char *fileName, const char *outpath, qboolean quiet);
 qboolean FS_Unzip(const char *fileName, qboolean quiet);
 
 void FS_HomeRemove(const char *homePath);
-
 qboolean FS_FileInPathExists(const char *testpath);
-int FS_CalculateFileSHA1(const char *path, char *hash);
-const char *FS_Dirpath(const char *path);
-const char *FS_Basename(const char *path);
-qboolean FS_MatchFileInPak(const char *filepath, const char *match);
-#define IsPathSep(X) ((X) == '\\' || (X) == '/' || (X) == PATH_SEP)
 
 #if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
-const char* DL_ContainerizePath(const char *temp, const char *dest);
 void FS_InitWhitelist(void);
+const char *FS_Basename(const char *path);
+const char *FS_Dirpath(const char *path);
+void FS_CreateContainerName(const char *id, char *output);
+qboolean FS_MatchFileInPak(const char *filepath, const char *match);
+int FS_CalculateFileSHA1(const char *path, char *hash);
 qboolean FS_IsWhitelisted(const char *pakName, const char *hash);
-#define FS_CONTAINER "dlcache"
 #endif
-
 
 /*
 ==============================================================
@@ -1095,6 +1088,11 @@ extern qboolean com_errorEntered;
 
 extern cvar_t *com_downloadURL;
 
+#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
+extern cvar_t *dl_whitelistModPaks;
+extern cvar_t *dl_whitelistMapPaks;
+#endif
+
 extern fileHandle_t com_journalFile;
 extern fileHandle_t com_journalDataFile;
 
@@ -1129,7 +1127,7 @@ temp file loading
 --- high memory ---
 */
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 #define ZONE_DEBUG
 #endif
 
@@ -1398,8 +1396,8 @@ char *Sys_Cwd(void);
 char *Sys_DefaultBasePath(void);
 char *Sys_DefaultInstallPath(void);
 char *Sys_DefaultHomePath(void);
-const char *Sys_Basename(char *path);
 const char *Sys_Dirname(char *path);
+const char *Sys_Basename(char *path);
 char *Sys_ConsoleInput(void);
 
 qboolean Sys_RandomBytes(byte *string, int len);

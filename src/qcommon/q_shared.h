@@ -47,7 +47,7 @@
 
 #define Q3_VERSION              PRODUCT_LABEL " " ETLEGACY_VERSION
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 #define ET_VERSION              Q3_VERSION " " CPUSTRING " " __DATE__ " DEBUG"
 #else
 #define ET_VERSION              Q3_VERSION " " CPUSTRING " " __DATE__
@@ -76,11 +76,12 @@
 
 #define MAX_MASTER_SERVERS 5   ///< number of supported master servers
 
-#define SLASH_COMMAND 1        ///< Will the client require a '/' sign in front of commands
+#define SLASH_COMMAND !cl_slashCommand->integer        ///< Will the client require a '/' sign in front of commands
 
-// ET: Legacy specific - used by mod code
-#define MOD_CHECK_ETLEGACY(isETLegacy, versionNum, outputValue) outputValue = (isETLegacy == qtrue ? qtrue : qfalse); \
-	if (outputValue) { outputValue = versionNum; }
+/// Added after 272 release these are used by mod code
+#define MOD_VERSION_DATA_CHECK(x) (x && x >= 272 && x < 3000)
+#define MOD_CHECK_LEGACY(islegacy, versionNum, outputValue) outputValue = (islegacy == qtrue ? qtrue : qfalse); \
+	if (outputValue && MOD_VERSION_DATA_CHECK(versionNum)) { outputValue = versionNum; }
 
 #ifdef _MSC_VER
 #pragma warning(disable : 4018) // signed/unsigned mismatch
@@ -383,11 +384,7 @@ typedef int clipHandle_t;
 #endif
 
 #ifndef BIT
-#ifdef _WIN64
-#define BIT(x)              (1i64 << x)
-#else
 #define BIT(x)              (1 << x)
-#endif
 #endif
 
 #define SIZE_KB(bytes) ((bytes) >> 10)
@@ -553,7 +550,7 @@ typedef enum
 //#define UI_MENUFULL     0x00080000
 //#define UI_SMALLFONT75  0x00100000
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 #define HUNK_DEBUG
 #endif
 
@@ -575,11 +572,19 @@ void *Hunk_AllocDebug(unsigned int size, ha_pref preference, char *label, char *
 void *Hunk_Alloc(unsigned int size, ha_pref preference);
 #endif
 
+#if 0
+void *Com_DMemcpy(void *dst, const void *src, size_t size, const char *filename, int line);
+void *Com_DMemset(void *dst, int val, size_t size, const char *filename, int line);
+#define Com_Memcpy(dst, src, size) Com_DMemcpy(dst, src, size, __FILE__, __LINE__)
+#define Com_Memset(dst, val, size) Com_DMemset(dst, val, size, __FILE__, __LINE__)
+#else
 #define Com_Memset memset
 #define Com_Memcpy memcpy
+#endif
 
 #define Com_Allocate malloc
 #define Com_Dealloc free
+
 
 /**
  * @enum CIN_Flags
@@ -1772,7 +1777,7 @@ void Com_ParseUA(userAgent_t *ua, const char *string);
 #define NUMARGS(...)  (sizeof((int[]) { 0, ## __VA_ARGS__ }) / sizeof(int) - 1)
 #endif
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 #if defined(_MSC_VER)
 #define etl_assert(x) if (!(x)) __debugbreak()
 #elif defined(_WIN32)

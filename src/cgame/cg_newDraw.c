@@ -368,6 +368,7 @@ void CG_DrawCursorhint(rectDef_t *rect)
 
 	switch (cg.cursorHintIcon)
 	{
+
 	case HINT_NONE:
 	case HINT_FORCENONE:
 		icon = 0;
@@ -433,6 +434,8 @@ void CG_DrawCursorhint(rectDef_t *rect)
 	case HINT_POWERUP:
 		icon = cgs.media.powerupHintShader;
 		break;
+        
+	// multiplayer hints
 	case HINT_BUILD:
 		icon = cgs.media.buildHintShader;
 		break;
@@ -445,11 +448,8 @@ void CG_DrawCursorhint(rectDef_t *rect)
 	case HINT_DYNAMITE:
 		icon = cgs.media.dynamiteHintShader;
 		break;
-	case HINT_RESTRICTED:
-		icon = cgs.media.friendShader;
-		break;
+
 	case HINT_ACTIVATE:
-	case HINT_BAD_USER:
 	default:
 		icon = cgs.media.usableHintShader;
 		break;

@@ -1,6 +1,9 @@
 /*
+ * Wolfenstein: Enemy Territory GPL Source Code
+ * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
+ *
  * ET: Legacy
- * Copyright (C) 2012-2020 ET:Legacy team <mail@etlegacy.com>
+ * Copyright (C) 2012-2018 ET:Legacy team <mail@etlegacy.com>
  *
  * This file is part of ET: Legacy - http://www.etlegacy.com
  *
@@ -16,6 +19,14 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with ET: Legacy. If not, see <http://www.gnu.org/licenses/>.
+ *
+ * In addition, Wolfenstein: Enemy Territory GPL Source Code is also
+ * subject to certain additional terms. You should have received a copy
+ * of these additional terms immediately following the terms and conditions
+ * of the GNU General Public License which accompanied the source code.
+ * If not, please request a copy in writing from id Software at the address below.
+ *
+ * id Software LLC, c/o ZeniMax Media Inc., Suite 120, Rockville, Maryland 20850 USA.
  */
 /**
  * @file g_skillrating.c
@@ -61,19 +72,175 @@
 // LAMBDA  10            - map continuity correction
 
 /**
+ * @brief G_SkillRatingDB_Init
+ * @return 0 if database is successfully initialized, 1 otherwise.
+ */
+int G_SkillRatingDB_Init()
+{
+	int db_mode;
+	int result;
+
+	if (level.database.initialized)
+	{
+		G_Printf("G_SkillRatingDB_Init: attempt to initialize already initialized database\n");
+		return 1;
+	}
+
+	db_mode = trap_Cvar_VariableIntegerValue("db_mode");
+
+	// check if engine db is enabled
+	if (db_mode == 0)
+	{
+		G_Printf("... DBMS is disabled\n");
+		return 1;
+	}
+
+	// check db mode
+	if (db_mode == 1)
+	{
+		char *db_uri = "file::memory:?mode=memory&cache=shared";
+		Q_strncpyz(level.database.path, db_uri, MAX_OSPATH);
+	}
+	else // db_mode == 2
+	{
+		char       homepath[MAX_OSPATH];
+		char       db_uri[MAX_OSPATH];
+		const char *db_path;
+
+		trap_Cvar_VariableStringBuffer("fs_homepath", homepath, sizeof(homepath));
+		trap_Cvar_VariableStringBuffer("db_uri", db_uri, sizeof(db_uri));
+
+		db_path = va("%s/%s", homepath, db_uri);
+
+		Q_strncpyz(level.database.path, db_path, MAX_OSPATH);
+	}
+
+	// db sanity check
+	if (G_SkillRatingDB_Check(level.database.path, db_mode))
+	{
+		return 1;
+	}
+
+	// open db
+	if (db_mode == 1)
+	{
+		result = sqlite3_open_v2(level.database.path, &level.database.db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_MEMORY | SQLITE_OPEN_SHAREDCACHE, NULL);
+
+		if (result != SQLITE_OK)
+		{
+			G_Printf("G_SkillRatingDB_Init: sqlite3_open_v2 failed: %s\n", sqlite3_errstr(result));
+			return 1;
+		}
+
+		result = sqlite3_enable_shared_cache(1);
+
+		if (result != SQLITE_OK)
+		{
+			G_Printf("G_SkillRatingDB_Init: sqlite3_enable_shared_cache failed: %s\n", sqlite3_errstr(result));
+			(void) sqlite3_close(level.database.db);
+			return 1;
+		}
+	}
+	else // db_mode == 2
+	{
+		char         *err_msg = NULL;
+		sqlite3_stmt *sqlstmt;
+
+		result = sqlite3_open_v2(level.database.path, &level.database.db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,NULL);
+
+		if (result != SQLITE_OK)
+		{
+			G_Printf("G_SkillRatingDB_Init: sqlite3_open_v2 failed: %s\n", sqlite3_errstr(result));
+			return 1;
+		}
+
+		// set pragma sync off
+		result = sqlite3_prepare(level.database.db, "PRAGMA synchronous = OFF", -1, &sqlstmt, NULL);
+
+		if (result != SQLITE_OK)
+		{
+			G_Printf("G_SkillRatingDB_Init: sqlite3_prepare failed: %s\n", sqlite3_errstr(result));
+			return 1;
+		}
+
+		result = sqlite3_step(sqlstmt);
+
+		if (result == SQLITE_DONE)
+		{
+			result = sqlite3_exec(level.database.db, "PRAGMA synchronous = OFF", NULL, NULL, &err_msg);
+
+			if (result != SQLITE_OK)
+			{
+				G_Printf("G_SkillRatingDB_Init: sqlite3_exec:PRAGMA failed: %s\n", err_msg);
+				sqlite3_free(err_msg);
+				return 1;
+			}
+		}
+
+		result = sqlite3_finalize(sqlstmt);
+
+		if (result != SQLITE_OK)
+		{
+			G_Printf("G_SkillRatingDB_Init: sqlite3_finalize failed\n");
+			return 1;
+		}
+	}
+
+	// initialize db - keep it open until deinit
+	level.database.initialized = 1;
+
+	// ensure temporary table is empty
+	if (G_SkillRatingPrepareMatchRating())
+	{
+		return 1;
+	}
+
+	return 0;
+}
+
+/**
+ * @brief G_SkillRatingDB_DeInit
+ * @return 0 if database is successfully deinitialized, 1 otherwise.
+ */
+int G_SkillRatingDB_DeInit()
+{
+	int result;
+
+	if (!level.database.initialized)
+	{
+		G_Printf("G_SkillRatingDB_DeInit: access to non-initialized database\n");
+		return 1;
+	}
+
+	// close db
+	result = sqlite3_close(level.database.db);
+	if (result != SQLITE_OK)
+	{
+		G_Printf("G_SkillRatingDB_DeInit: sqlite3_close failed: %s\n", sqlite3_errstr(result));
+		return 1;
+	}
+
+	level.database.db          = NULL;
+	level.database.path[0]     = '\0';
+	level.database.initialized = 0;
+
+	return 0;
+}
+
+/**
  * @brief Checks if database exists, if tables exist and if schemas are correct
  * @param[in] db_path
  * @param[in] db_mode
  * @return 0 if database check is successful, 1 otherwise.
  */
-int G_SkillRatingDBCheck(char *db_path, int db_mode)
+int G_SkillRatingDB_Check(char *db_path, int db_mode)
 {
 	int     result;
 	sqlite3 *db;
 
 	if (!db_path || db_path[0] == '\0')
 	{
-		G_Printf("G_SkillRatingDBCheck: invalid path specified\n");
+		G_Printf("G_SkillRatingDB_Check: invalid path specified\n");
 		return 1;
 	}
 
@@ -89,7 +256,7 @@ int G_SkillRatingDBCheck(char *db_path, int db_mode)
 
 	if (result != SQLITE_OK)
 	{
-		G_Printf("G_SkillRatingDBCheck: sqlite3_open_v2 failed: %s\n", sqlite3_errstr(result));
+		G_Printf("G_SkillRatingDB_Check: sqlite3_open_v2 failed: %s\n", sqlite3_errstr(result));
 		return 1;
 	}
 
@@ -98,13 +265,13 @@ int G_SkillRatingDBCheck(char *db_path, int db_mode)
 
 	if (result != SQLITE_OK)
 	{
-		G_Printf("G_SkillRatingDBCheck: sqlite3_exec SRCHECK_SQLWRAP_TABLES failed: %s\n", sqlite3_errstr(result));
+		G_Printf("G_SkillRatingDB_Check: sqlite3_exec SRCHECK_SQLWRAP_TABLES failed: %s\n", sqlite3_errstr(result));
 
 		result = sqlite3_close(db);
 
 		if (result != SQLITE_OK)
 		{
-			G_Printf("G_SkillRatingDBCheck: sqlite3_close failed: %s\n", sqlite3_errstr(result));
+			G_Printf("G_SkillRatingDB_Check: sqlite3_close failed: %s\n", sqlite3_errstr(result));
 			return 1;
 		}
 		return 1;
@@ -115,13 +282,13 @@ int G_SkillRatingDBCheck(char *db_path, int db_mode)
 
 	if (result != SQLITE_OK)
 	{
-		G_Printf("G_SkillRatingDBCheck: sqlite3_exec SRCHECK_SQLWRAP_SCHEMA failed: %s\n", sqlite3_errstr(result));
+		G_Printf("G_SkillRatingDB_Check: sqlite3_exec SRCHECK_SQLWRAP_SCHEMA failed: %s\n", sqlite3_errstr(result));
 
 		result = sqlite3_close(db);
 
 		if (result != SQLITE_OK)
 		{
-			G_Printf("G_SkillRatingDBCheck: sqlite3_close failed: %s\n", sqlite3_errstr(result));
+			G_Printf("G_SkillRatingDB_Check: sqlite3_close failed: %s\n", sqlite3_errstr(result));
 			return 1;
 		}
 		return 1;
@@ -132,7 +299,7 @@ int G_SkillRatingDBCheck(char *db_path, int db_mode)
 
 	if (result != SQLITE_OK)
 	{
-		G_Printf("G_SkillRatingDBCheck: sqlite3_close failed: %s\n", sqlite3_errstr(result));
+		G_Printf("G_SkillRatingDB_Check: sqlite3_close failed: %s\n", sqlite3_errstr(result));
 		return 1;
 	}
 
@@ -488,12 +655,6 @@ void G_SkillRatingGetClientRating(gclient_t *cl)
 	int          clientNum;
 	srData_t     sr_data;
 
-	// disable for these game types
-	if (g_gametype.integer == GT_WOLF_STOPWATCH || g_gametype.integer == GT_WOLF_LMS)
-	{
-		return;
-	}
-
 	if (!level.database.initialized)
 	{
 		G_Printf("G_SkillRatingGetClientRating: access to non-initialized database\n");
@@ -583,12 +744,6 @@ void G_SkillRatingSetClientRating(gclient_t *cl)
 	int          clientNum;
 	srData_t     sr_data;
 
-	// disable for these game types
-	if (g_gametype.integer == GT_WOLF_STOPWATCH || g_gametype.integer == GT_WOLF_LMS)
-	{
-		return;
-	}
-
 	if (!level.database.initialized)
 	{
 		G_Printf("G_SkillRatingSetClientRating: access to non-initialized database\n");
@@ -657,12 +812,6 @@ float G_SkillRatingGetMapRating(char *mapname)
 	char         *err_msg = NULL;
 	char         *sql;
 	sqlite3_stmt *sqlstmt;
-
-	// disable for these game types
-	if (g_gametype.integer == GT_WOLF_STOPWATCH || g_gametype.integer == GT_WOLF_LMS)
-	{
-		return 0.5f;
-	}
 
 	if (!level.database.initialized)
 	{
@@ -824,12 +973,6 @@ void G_CalculateSkillRatings(void)
 	char *buf;
 	int  winner;
 
-	// disable for these game types
-	if (g_gametype.integer == GT_WOLF_STOPWATCH || g_gametype.integer == GT_WOLF_LMS)
-	{
-		return;
-	}
-
 	// determine winner
 	trap_GetConfigstring(CS_MULTI_MAPWINNER, cs, sizeof(cs));
 	buf    = Info_ValueForKey(cs, "w");
@@ -861,13 +1004,10 @@ void G_CalculateSkillRatings(void)
 		G_LogPrintf("SkillRating: Map bias: %.6f\n", level.mapProb);
 
 		// update map bias on intermission scoreboard
-		trap_GetConfigstring(CS_MODINFO, cs, sizeof(cs));
+		trap_GetConfigstring(CS_LEGACYINFO, cs, sizeof(cs));
 		Info_SetValueForKey(cs, "M", va("%f", level.mapProb));
-		trap_SetConfigstring(CS_MODINFO, cs);
+		trap_SetConfigstring(CS_LEGACYINFO, cs);
 	}
-
-	// log last estimated win probability
-	G_LogPrintf("SkillRating: Win probability X/L: %.6f/%.6f\n", level.axisProb, level.alliesProb);
 
 	G_UpdateSkillRating(winner);
 }
@@ -1180,12 +1320,6 @@ float G_CalculateWinProbability(int team)
 	float mapMu        = 0.f;
 	float mapSigma     = 0.f;
 	float mapBeta      = 0.f;
-
-	// disable for these game types
-	if (g_gametype.integer == GT_WOLF_STOPWATCH || g_gametype.integer == GT_WOLF_LMS)
-	{
-		return 0.5f;
-	}
 
 	// current play time
 	int currentTime = level.timeCurrent - level.startTime - level.timeDelta;

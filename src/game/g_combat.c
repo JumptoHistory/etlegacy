@@ -132,7 +132,7 @@ void TossWeapons(gentity_t *self)
 	    case WP_GARAND_SCOPE:
 	        weapon = WP_GARAND;
 	        break;
-	    case WP_FG42_SCOPE:
+	    case WP_FG42SCOPE:
 	        weapon = WP_FG42;
 	        break;
 	    case WP_M7:
@@ -324,10 +324,7 @@ void player_die(gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int 
 
 	// unlagged - backward reconciliation #2
 	// make sure the body shows up in the client's current position
-	if (g_antilag.integer)
-	{
-		G_ReAdjustSingleClientPosition(self);
-	}
+	G_ReAdjustSingleClientPosition(self);
 	// unlagged - backward reconciliation #2
 
 	if (attacker == self)
@@ -482,12 +479,6 @@ void player_die(gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int 
 
 		// fixes premature grenade explosion, ta bani ;)
 		fire_missile(self, launchspot, launchvel, self->s.weapon);
-
-		// decrease ammo
-		if (GetWeaponTableData(self->s.weapon)->type & WEAPON_TYPE_GRENADE)
-		{
-			self->client->ps.ammo[GetWeaponTableData(self->s.weapon)->ammoIndex]--;
-		}
 	}
 
 	if (attackerClient)
@@ -617,8 +608,8 @@ void player_die(gentity_t *self, gentity_t *inflictor, gentity_t *attacker, int 
 	self->client->ps.viewangles[0] = 0;
 	self->client->ps.viewangles[2] = 0;
 
-	self->r.maxs[2]          = DEAD_BODYHEIGHT_BBOX;     // so bodies don't clip into world, was crouchMaxZ => 24
-	self->client->ps.maxs[2] = DEAD_BODYHEIGHT_BBOX;     // so bodies don't clip into world, was crouchMaxZ => 24
+	self->r.maxs[2]          = self->client->ps.crouchMaxZ; //% 0;  // so bodies don't clip into world
+	self->client->ps.maxs[2] = self->client->ps.crouchMaxZ; //% 0;  // so bodies don't clip into world
 	trap_LinkEntity(self);
 
 	// don't allow respawn until the death anim is done
@@ -970,7 +961,6 @@ qboolean IsHeadShot(gentity_t *targ, vec3_t dir, vec3_t point, meansOfDeath_t mo
 
 		if (g_antilag.integer)
 		{
-			// Why??
 			G_ReAdjustSingleClientPosition(targ);
 		}
 
@@ -1336,25 +1326,33 @@ void G_Damage(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec3_t
 		VectorNormalize(dir);
 	}
 
-	if ((targ->flags & FL_NO_KNOCKBACK) || (dflags & DAMAGE_NO_KNOCKBACK) ||
-	    (targ->client && g_friendlyFire.integer && (onSameTeam || (attacker->client && targ->client->sess.sessionTeam == G_GetTeamFromEntity(inflictor)))))
+	knockback = damage;
+	if (knockback > 200)
+	{
+		knockback = 200;
+	}
+	if (targ->flags & FL_NO_KNOCKBACK)
 	{
 		knockback = 0;
 	}
-	else
+	if (dflags & DAMAGE_NO_KNOCKBACK)
 	{
-		knockback = (damage > 200) ? 200 : damage;
+		knockback = 0;
+	}
+	else if (dflags & DAMAGE_HALF_KNOCKBACK)
+	{
+		knockback *= 0.5f;
+	}
 
-		if (dflags & DAMAGE_HALF_KNOCKBACK)
-		{
-			knockback *= 0.5;
-		}
+	// set weapons means less knockback
+	if (targ->client && (GetWeaponTableData(targ->client->ps.weapon)->type & WEAPON_TYPE_SET))
+	{
+		knockback *= 0.5;
+	}
 
-		// set weapons means less knockback
-		if (targ->client && (GetWeaponTableData(targ->client->ps.weapon)->type & WEAPON_TYPE_SET))
-		{
-			knockback *= 0.5;
-		}
+	if (targ->client && g_friendlyFire.integer && (onSameTeam || (attacker->client && targ->client->sess.sessionTeam == G_GetTeamFromEntity(inflictor))))
+	{
+		knockback = 0;
 	}
 
 	// figure momentum add, even if the damage won't be taken
@@ -1383,7 +1381,7 @@ void G_Damage(gentity_t *targ, gentity_t *inflictor, gentity_t *attacker, vec3_t
 		                          && mod != MOD_LANDMINE
 		                          ))
 		{
-			targ->client->ps.velocity[2] *= 0.25f;
+			targ->client->ps.velocity[2] *= 0.25;
 		}
 
 		// set the timer so that the other client can't cancel

@@ -376,13 +376,45 @@ void GL_State(unsigned long stateBits)
 			qglEnable(GL_ALPHA_TEST);
 			qglAlphaFunc(GL_GREATER, 0.0f);
 			break;
-		case GLS_ATEST_LT_80:
+		case GLS_ATEST_LT_16:
+			qglEnable(GL_ALPHA_TEST);
+			qglAlphaFunc(GL_LESS, 0.0625f);
+			break;
+		case GLS_ATEST_GE_16:
+			qglEnable(GL_ALPHA_TEST);
+			qglAlphaFunc(GL_GEQUAL, 0.0625f);
+			break;
+		case GLS_ATEST_LT_32:
+			qglEnable(GL_ALPHA_TEST);
+			qglAlphaFunc(GL_LESS, 0.125f);
+			break;
+		case GLS_ATEST_GE_32:
+			qglEnable(GL_ALPHA_TEST);
+			qglAlphaFunc(GL_GEQUAL, 0.125f);
+			break;
+		case GLS_ATEST_LT_64:
+			qglEnable(GL_ALPHA_TEST);
+			qglAlphaFunc(GL_LESS, 0.25f);
+			break;
+		case GLS_ATEST_GE_64:
+			qglEnable(GL_ALPHA_TEST);
+			qglAlphaFunc(GL_GEQUAL, 0.25f);
+			break;
+		case GLS_ATEST_LT_128:
 			qglEnable(GL_ALPHA_TEST);
 			qglAlphaFunc(GL_LESS, 0.5f);
 			break;
-		case GLS_ATEST_GE_80:
+		case GLS_ATEST_GE_128:
 			qglEnable(GL_ALPHA_TEST);
 			qglAlphaFunc(GL_GEQUAL, 0.5f);
+			break;
+		case GLS_ATEST_GE_192:
+			qglEnable(GL_ALPHA_TEST);
+			qglAlphaFunc(GL_GEQUAL, 0.75f);
+			break;
+		case GLS_ATEST_GE_224:
+			qglEnable(GL_ALPHA_TEST);
+			qglAlphaFunc(GL_GEQUAL, 0.875f);
 			break;
 		default:
 			etl_assert(0);
@@ -1257,14 +1289,842 @@ const void *RB_StretchPicGradient(const void *data)
 	return ( const void * ) (cmd + 1);
 }
 
+#define R_GetGLError() R_PrintGLError(__FILE__, __LINE__)
+void R_PrintGLError(const char *sourceFilename, int sourceLine)
+{
+	GLenum err;
+	if ((err = glGetError()) != GL_NO_ERROR)
+	{
+		Com_Printf("%s:%i: glGetError() == 0x%x\n", sourceFilename, sourceLine, err);
+	}		
+}
+static float HaltonSequence(int index, int base)
+{
+	float f = 1.f;
+	float r = 0.f;
+
+	while (index > 0)
+	{
+		f /= base;
+		r += f * (index % base);
+		index /= base;
+	}
+
+	return r;
+}
+void DrawStuff_GL430(void)
+{
+	float positions[] = { -1.f, 1.f,  -1.f, -1.f,  1.f, -1.f,  1.f, 1.f };
+	GLuint vbo[2], vao;
+	glGenBuffers(2, vbo);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 8, positions, GL_STATIC_DRAW);
+
+	glGenVertexArrays(1, &vao);
+	glBindVertexArray(vao);
+	glEnableVertexAttribArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, vbo[0]);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+	glBindVertexArray(vao);
+	//glClearColor(0.5f, 0.5f, 0.f, 1.f);
+	//glClear(GL_COLOR_BUFFER_BIT);
+	glDrawArrays(GL_QUADS, 0, 4);
+
+	glDisableVertexAttribArray(0);
+	glBindVertexArray(0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+void DrawStuff(int width, int height)
+{
+	glBegin(GL_QUADS);
+	glTexCoord2f(0.f, 0.f); glVertex2i(0, height);
+	glTexCoord2f(0.f, 1.f); glVertex2i(0, 0);
+	glTexCoord2f(1.f, 1.f); glVertex2i(width, 0);
+	glTexCoord2f(1.f, 0.f); glVertex2i(width, height);
+	glEnd();
+}
+static void DrawStuffDynamicRes(int width, int height, float scale)
+{
+	glBegin(GL_QUADS);
+	glTexCoord2f(0.f, 0.f); glVertex2i(0, height);
+	glTexCoord2f(0.f, 1.f); glVertex2i(0, 0 - height / scale + height);
+	glTexCoord2f(1.f, 1.f); glVertex2i(width / scale, 0 - height / scale + height);
+	glTexCoord2f(1.f, 0.f); glVertex2i(width / scale, height);
+	glEnd();
+}
+static void BindTexture(GLuint texnum)
+{
+	if (glState.currenttextures[glState.currenttmu] != texnum)
+	{
+		glBindTexture(GL_TEXTURE_2D, texnum);
+		glState.currenttextures[glState.currenttmu] = texnum;
+	}
+}
+static void RB_PerformFxaa(int width, int height, GLuint inputTexture, GLuint outputFramebuffer)
+{
+	qglViewport(0, 0, width, height);
+	qglScissor(0, 0, width, height);
+	qglMatrixMode(GL_PROJECTION);
+	qglLoadIdentity();
+	qglOrtho(0, width, height, 0, 0, 1);
+	qglMatrixMode(GL_MODELVIEW);
+	qglLoadIdentity();
+	GL_State(GLS_DEPTHTEST_DISABLE);
+	qglDisable(GL_CULL_FACE);
+	qglDisable(GL_CLIP_PLANE0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[1]);
+	BindTexture(inputTexture);
+
+	glUseProgram(backEnd.objects.resScaleProgramObjects[PO_FXAA]);
+	glUniform1i(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_FXAA], "Texture"), 0);
+	glUniform2f(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_FXAA], "TextureSize"), width, height);
+
+	DrawStuff(width, height);
+
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[1]);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, outputFramebuffer);
+	glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+}
+
 /**
- * @brief RB_DrawSurfs
- * @param[in] data
- * @return
- */
-const void *RB_DrawSurfs(const void *data)
+* @brief RB_SetupResolutionScaleBuffers
+* @return
+*/
+void RB_SetupResolutionScaleBuffers(void)
+{
+	static const GLenum drawBuffer = GL_COLOR_ATTACHMENT0;
+	GLuint multisample;
+	int i;
+
+	if (!glConfigExt.multisampleSamples && glConfigExt.maxSamples > 0)
+	{
+		if (r_fboMultisample->integer == -1)
+		{
+			multisample = glConfigExt.maxSamples;
+		}
+		else
+		{
+			multisample = min(r_fboMultisample->integer, glConfigExt.maxSamples);
+		}
+	}
+	else
+	{
+		multisample = 0;
+	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[1]);
+	glBindRenderbuffer(GL_RENDERBUFFER, backEnd.objects.resScaleColorBuffers[1]);
+	glRenderbufferStorage(GL_RENDERBUFFER, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, backEnd.objects.resScaleColorBuffers[1]);
+
+	R_GetGLError();
+	for (i = 0; i < ARRAY_LEN(backEnd.objects.resScaleFramebuffersMultisample); i++)
+	{
+		GLuint texTarget;
+		glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffersMultisample[i]);
+		R_GetGLError();
+		if (multisample > 0)
+		{
+			glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, backEnd.objects.resScaleTexturesMultisample[i]);
+			glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, multisample, glConfigExt.framebufferSrgbAvailable ? (i ? GL_SRGB_ALPHA : GL_SRGB) : GL_RGB, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, GL_FALSE);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, backEnd.objects.resScaleTexturesMultisample[i], 0);
+		}
+		else
+		{
+			glBindRenderbuffer(GL_RENDERBUFFER, backEnd.objects.resScaleColorBufferMultisample);
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, drawBuffer, GL_RENDERBUFFER, backEnd.objects.resScaleColorBufferMultisample);
+			//glTexImage2D(texTarget, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			glRenderbufferStorage(GL_RENDERBUFFER, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value);
+		}
+		if (multisample > 0)
+		{
+			glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, backEnd.objects.resScaleDepthTexturesMultisample[i]);
+			glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, multisample, GL_DEPTH24_STENCIL8, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, GL_FALSE);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, backEnd.objects.resScaleDepthTexturesMultisample[0], 0);
+		}
+		else
+		{
+			//glTexImage2D(texTarget, 0, GL_DEPTH24_STENCIL8, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_BYTE, NULL);
+			glBindRenderbuffer(GL_RENDERBUFFER, backEnd.objects.resScaleDepthBufferMultisample);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value);
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, backEnd.objects.resScaleDepthBufferMultisample);
+		}
+		glDrawBuffer(drawBuffer);
+		//if (r_srgbGammaCorrect->integer != 2)
+		{
+			break;
+		}
+	}
+
+	for (i = 0; i < ARRAY_LEN(backEnd.objects.resScaleTextures); i++)
+	{
+		BindTexture(backEnd.objects.resScaleTextures[i]);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		if (i == 0)
+		{
+			glTexImage2D(GL_TEXTURE_2D, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+			glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, backEnd.objects.resScaleTextures[i], 0);
+		}
+		else if (i == 1)
+		{
+			glTexImage2D(GL_TEXTURE_2D, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->value / r_resolutionScale->integer, glConfig.vidHeight * r_resolutionScale->value / r_resolutionScale->integer, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+			glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[2]);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, backEnd.objects.resScaleTextures[i], 0);
+		}
+		else if (i == 2)
+		{
+			glTexImage2D(GL_TEXTURE_2D, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->integer, glConfig.vidHeight * r_resolutionScale->integer, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+			glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[3]);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, backEnd.objects.resScaleTextures[i], 0);
+		}
+	}
+
+	backEnd.objects.resScaleWeightsCalculated = qfalse;
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+static float RB_CalcBicubicWeight(float x, int mode)
+{
+	float B,C;
+
+	switch (mode)
+	{
+	case 5:
+		// Mitchel-Netravali coefficients.
+		// Best psychovisual result.
+		B = 1.0 / 3.0;
+		C = 1.0 / 3.0;
+		break;
+	case 4:
+		// Sharper version.
+		// May look better in some cases.
+		B = 0.0;
+		C = 0.75;
+		break;
+	default:
+		B = 0.1;
+		C = 0.5;
+		break;
+	}
+	if (x < 1.0)
+	{
+		return
+			(
+				pow(x, 2.0) * ((12.0 - 9.0 * B - 6.0 * C) * x + (-18.0 + 12.0 * B + 6.0 * C)) +
+				(6.0 - 2.0 * B)
+				) / 6.0;
+	}
+	else if ((x >= 1.0) && (x < 2.0))
+	{
+		return
+			(
+				pow(x, 2.0) * ((-B - 6.0 * C) * x + (6.0 * B + 30.0 * C)) +
+				(-12.0 * B - 48.0 * C) * x + (8.0 * B + 24.0 * C)
+				) / 6.0;
+	}
+	else
+	{
+		return 0.0;
+	}
+}
+void RB_CalcScalingWeights(int mode, float sampleRadius, int numPatterns, int numJitters, const vec2_t *jitters, weightBuffer_t *weights)
+{
+	float radius;
+	switch (mode)
+	{
+	case 3:
+	case 4:
+	case 5:
+		radius = 2.f;
+		break;
+	default:
+		radius = sampleRadius;
+	}
+	vec2_t stepxy = {1.f / backEnd.viewParms.viewportWidth, 1.f / backEnd.viewParms.viewportHeight};
+	vec2_t outpix = {1.f / glConfig.vidWidth, 1.f / glConfig.vidHeight};
+	int i, j, k;
+	int weightIndex = 0;
+	for (i = 0; i < numPatterns; i++)
+	{
+		for (j = 0; j < numPatterns; j++)
+		{
+			vec2_t fpos_org = {(0.5 - radius + i) * outpix[0], (0.5 - radius + j) * outpix[1]};
+			weights->indexes[i][j] = weightIndex;
+			for (k = 0; k < numJitters; k++)
+			{
+				vec2_t fpos = {fpos_org[0] - jitters[k][0] * stepxy[0], fpos_org[1] - jitters[k][1] * stepxy[1]};
+				fpos[0] -= (fpos[0] / stepxy[0] - floor(fpos[0] / stepxy[0])) * stepxy[0];
+				fpos[1] -= (fpos[1] / stepxy[1] - floor(fpos[1] / stepxy[1])) * stepxy[1];
+				fpos[0] += 0.5 * stepxy[0];
+				fpos[1] += 0.5 * stepxy[1];
+				if (fpos[0] <= fpos_org[0])
+				{
+					fpos[0] += stepxy[0];
+				}
+				if (fpos[1] <= fpos_org[1])
+				{
+					fpos[1] += stepxy[1];
+				}
+				vec2_t maxpt = {(0.5 + radius + i) * outpix[0], (0.5 + radius + j) * outpix[1]};
+				vec2_t cpos;
+				weights->FirstPos[i][j][k][0] = fpos[0] - (i + 0.5) * outpix[0];
+				weights->FirstPos[i][j][k][1] = fpos[1] - (j + 0.5) * outpix[1];
+
+				for (cpos[1] = fpos[1], weights->counter[i][j][k][1] = 0; cpos[1] < maxpt[1]; cpos[1] += stepxy[1], weights->counter[i][j][k][1]++)
+				{
+					double distY = cpos[1] / outpix[1] - j - 0.5;
+
+					for (cpos[0] = fpos[0], weights->counter[i][j][k][0] = 0; cpos[0] < maxpt[0]; cpos[0] += stepxy[0], weightIndex++, weights->counter[i][j][k][0]++)
+					{
+						double distX = cpos[0] / outpix[0] - i - 0.5;
+						double dist2D = sqrt(distX * distX + distY * distY);
+						double sample;
+						if (dist2D >= radius)
+						{
+							weights->buffer[weightIndex] = 0.f;
+							continue;
+						}
+						else if(dist2D == 0.0)
+						{
+							weights->buffer[weightIndex] = 1.f;
+							continue;
+						}
+						switch (mode)
+						{
+						case 3:
+						case 4:
+						case 5:
+							weights->buffer[weightIndex] = RB_CalcBicubicWeight(dist2D, mode);
+							break;
+						default:
+							sample = max(dist2D * 3.1415926535897932384626433832795, 1e-5);
+							weights->buffer[weightIndex] = sin(sample) / sample * sin(sample / radius) / (sample / radius);
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+void RB_CalcSupersampleWeights(const vec2_t *jitters, int numJitters, float radius, float *weights)
+{
+	double dist, sample;
+	double f_pos[2], cpos[2];
+	int i, j;
+
+	j = 0;
+	for (i = 0; i < numJitters; i++)
+	{
+		f_pos[0] = -(double)radius - jitters[i][0];
+		f_pos[1] = -(double)radius - jitters[i][1];
+		if (f_pos[0] <= -radius)
+		{
+			f_pos[0] += 1.0;
+		}
+		if (f_pos[1] <= -radius)
+		{
+			f_pos[1] += 1.0;
+		}
+
+		for (cpos[1] = f_pos[1]; cpos[1] < radius; cpos[1] += 1.0)
+		{
+			for (cpos[0] = f_pos[0]; cpos[0] < radius; cpos[0] += 1.0)
+			{
+				dist = sqrtf(powf(cpos[0], 2.0) + powf(cpos[1], 2.0));
+
+				if (dist >= radius)
+				{
+					weights[j] = 0.0;
+				}
+				else if (dist == 0.0)
+				{
+					weights[j] = 1.0;
+				}
+				else
+				{
+					//sample = dist * 3.1415926535897932384626433832795;
+					sample = max(dist * 3.1415926535897932384626433832795, 1e-5);
+					weights[j] = sin(sample) / sample * sin(sample / radius) / (sample / radius);
+				}
+				j++;
+			}
+		}
+	}
+}
+
+void RB_SetupSupersampleBuffers(void)
+{
+	int i, j, count;
+
+	for (i = 0; i < r_supersample->integer; i++)
+	{
+		BindTexture(backEnd.objects.supersampleTextures[i]);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexImage2D(GL_TEXTURE_2D, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.supersampleFramebuffers[i]);
+		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, backEnd.objects.supersampleTextures[i], 0);
+	}
+	for (i = 0, count = 0; i < min(r_supersampleMultiframe->integer, ARRAY_LEN(backEnd.objects.supersampleWeights)); i++)
+	{
+		for (j = 0; j < r_supersample->integer; j++, count++)
+		{
+			backEnd.objects.supersampleOffsets[i][j][0] = HaltonSequence(count, 2);
+			backEnd.objects.supersampleOffsets[i][j][1] = HaltonSequence(count, 3);
+			backEnd.objects.supersampleJittersInPixel[i][j][0] = (backEnd.objects.supersampleOffsets[i][j][0] - 0.5) * r_supersampleSmoothness->value;
+			backEnd.objects.supersampleJittersInPixel[i][j][1] = (backEnd.objects.supersampleOffsets[i][j][1] - 0.5) * r_supersampleSmoothness->value;
+		}
+		RB_CalcSupersampleWeights(backEnd.objects.supersampleJittersInPixel, r_supersample->integer, r_scalingSampleRadius->value, backEnd.objects.supersampleWeights[i]);
+	}
+}
+
+static float dynamicScale = 1.f;
+void RB_PrepairOffScreenBuffers(void)
+{
+	static qboolean resScaleModified = qfalse;
+	//static float resScaleOrg = 0.0;
+	static int resScaleModCount = 0, fboMsModCount = 0, scalingSampleRadius = 0, HQScalingModCount = 0, HQScalingModeModCount = 0, supersampleModCount = 0, supersampleSmoothenessModCount = 0, supersampleMultiframeModCount = 0, supersampleModeModCount = 0, resScaleLodFixModCount = 0;
+	int i;
+
+	if (r_resolutionScale->modificationCount != resScaleModCount || r_fboMultisample->modificationCount != fboMsModCount || scalingSampleRadius != r_scalingSampleRadius->modificationCount || HQScalingModCount != r_highQualityScaling->modificationCount || HQScalingModeModCount != r_highQualityScalingMode->modificationCount ||
+		supersampleModCount != r_supersample->modificationCount || supersampleSmoothenessModCount != r_supersampleSmoothness->modificationCount || supersampleMultiframeModCount != r_supersampleMultiframe->modificationCount || supersampleModeModCount != r_supersampleMode->modificationCount ||
+		resScaleLodFixModCount != r_resolutionScaleLodFix->modificationCount)
+	{ 
+		r_resolutionScale->value = strtof(r_resolutionScale->string, NULL);
+		r_highQualityScaling->integer = atoi(r_highQualityScaling->string);
+
+		if (r_highQualityScaling->integer & 1 && r_highQualityScaling->integer & 4)
+		{
+			if (r_resolutionScale->value < 1.0)
+			{
+				r_highQualityScaling->integer = 0;
+			}
+			else if (r_resolutionScale->value < 1.25)
+			{
+				r_resolutionScale->value = 1.0;
+			}
+			else if (r_resolutionScale->value < 1.37)
+			{
+				r_highQualityScaling->integer &= ~4;
+			}
+			else if (r_resolutionScale->value < 1.75)
+			{
+				r_resolutionScale->value = 1.5;
+			}
+			else if (r_resolutionScale->value <= 1.8)
+			{
+				r_highQualityScaling->integer &= ~4;
+			}
+			else if (r_resolutionScale->value < 2.35)
+			{
+				r_resolutionScale->value = 2.0;
+			}
+			else if (r_resolutionScale->value < 2.67)
+			{
+				r_highQualityScaling->integer &= ~4;
+			}
+			else
+			{
+				r_resolutionScale->value = 3.0;
+			}
+		}
+
+		r_supersampleMode->integer = atoi(r_supersampleMode->string);
+		if (r_resolutionScale->value > 1.0 && r_highQualityScaling->integer & 4 && r_supersampleMode->integer == 2)
+		{
+			r_supersampleMode->integer = 0;
+		}
+
+		/*if (r_supersample->modificationCount > 1 && r_supersample->modificationCount != supersampleModCount || r_supersampleSmoothness->modificationCount > 1 && supersampleSmoothenessModCount != r_supersampleSmoothness->modificationCount ||
+			r_supersampleMultiframe->modificationCount > 1 && supersampleMultiframeModCount != r_supersampleMultiframe->modificationCount ||
+			r_resolutionScale->modificationCount + r_fboMultisample->modificationCount > 2 && (r_resolutionScale->modificationCount != resScaleModCount || r_fboMultisample->modificationCount != fboMsModCount))*/
+		{
+			RB_SetupSupersampleBuffers();
+			RB_SetupResolutionScaleBuffers();
+
+			if (r_supersample->integer)
+			{
+				backEnd.textureLodBias = -(log(r_supersample->integer) / log(4.0) * r_supersampleLodFix->value);
+			}
+			else
+			{
+				backEnd.textureLodBias = 0.0;
+			}
+			if (r_resolutionScaleLodFix->value && r_resolutionScale->value > 1.f)
+			{
+				backEnd.textureLodBias += log(r_resolutionScale->value) * r_resolutionScaleLodFix->value;
+			}
+			for (i = 0 ; i < tr.numImages ; i++)
+			{
+				image_t *glt = tr.images[i];
+				if (glt->mipmap)
+				{
+					GL_Bind(glt);
+					qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS, backEnd.textureLodBias);
+				}
+			}
+		}
+
+		backEnd.objects.resScaleWeightsCalculated = qfalse;
+
+		resScaleModified = qfalse;
+		resScaleModCount = r_resolutionScale->modificationCount;
+		fboMsModCount = r_fboMultisample->modificationCount;
+		scalingSampleRadius = r_scalingSampleRadius->modificationCount;
+		HQScalingModCount = r_highQualityScaling->modificationCount;
+		HQScalingModeModCount = r_highQualityScalingMode->modificationCount;
+		supersampleModCount = r_supersample->modificationCount;
+		supersampleSmoothenessModCount = r_supersampleSmoothness->modificationCount;
+		supersampleMultiframeModCount = r_supersampleMultiframe->modificationCount;
+		supersampleModeModCount = r_supersampleMode->modificationCount;
+		resScaleLodFixModCount = r_resolutionScaleLodFix->modificationCount;
+	}
+
+	backEnd.viewParms.viewportWidth *= r_resolutionScale->value;
+	backEnd.viewParms.viewportHeight *= r_resolutionScale->value;
+
+	glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffersMultisample[0]);
+
+	GLenum err = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if(err != GL_FRAMEBUFFER_COMPLETE)
+		Com_Printf("RB_DrawSurfs: glCheckFramebufferStatus(GL_FRAMEBUFFER) == 0x%x\n", err);
+}
+
+void RB_SetGL2DWidthHeight(int width, int height)
+{
+	backEnd.projection2D = qtrue;
+
+	qglViewport(0, 0, width, height);
+	qglScissor(0, 0, width, height);
+	qglMatrixMode(GL_PROJECTION);
+	qglLoadIdentity();
+	qglOrtho(0, width, height, 0, 0, 1);
+	qglMatrixMode(GL_MODELVIEW);
+	qglLoadIdentity();
+	GL_State(GLS_DEPTHTEST_DISABLE);
+
+	qglDisable(GL_CULL_FACE);
+	qglDisable(GL_CLIP_PLANE0);
+}
+
+void RB_UtilizeOffScreenBuffers(void)
+{
+	int resScaleInt = 0;
+	int i;
+
+	/*if (glConfigExt.framebufferSrgbAvailable && r_srgbGammaCorrect->integer == 4)
+	{
+		glEnable(GL_FRAMEBUFFER_SRGB);
+	}*/
+
+	//glBindRenderbuffer(GL_RENDERBUFFER, backEnd.objects.resScaleColorBuffers[0]);
+	//glRenderbufferStorage(GL_RENDERBUFFER, GL_RGB, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight);
+	glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
+	//glFramebufferRenderbuffer(GL_FRAMEBUFFER, drawBuffer, GL_RENDERBUFFER, backEnd.objects.resScaleColorBuffers[0]);
+	BindTexture(backEnd.objects.resScaleTextures[0]);
+	//glDrawBuffer(GL_COLOR_ATTACHMENT0);
+
+	if (r_supersample->integer <= 1)
+	{
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffersMultisample[0]);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
+		glReadBuffer(GL_COLOR_ATTACHMENT0);
+		glBlitFramebuffer(0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	}
+
+	GLenum err = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+	if(err != GL_FRAMEBUFFER_COMPLETE)
+		Com_Printf("RB_DrawSurfs: glCheckFramebufferStatus(GL_FRAMEBUFFER) == 0x%x\n", err);
+
+	if (r_fboFxaa->integer & 2)
+	{
+		RB_PerformFxaa(backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, backEnd.objects.resScaleTextures[0], backEnd.objects.resScaleFramebuffers[0]);
+	}
+
+	if (r_resolutionScale->value != 1.f)
+	{
+		BindTexture(backEnd.objects.resScaleTextures[0]);
+		glDisableClientState(GL_COLOR_ARRAY);
+
+		if (r_highQualityScaling->integer & 2)
+		{
+			if (r_resolutionScale->integer >= 2 && r_resolutionScale->value / r_resolutionScale->integer == 1.f)
+			{
+				resScaleInt = r_resolutionScale->integer;
+			}
+			else if (r_resolutionScale->value > 2.f)
+			{
+				if (!(r_highQualityScaling->integer & 1))
+				{
+					glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
+					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[3]);
+					glBlitFramebuffer(0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, 0, glConfig.vidWidth * r_resolutionScale->integer, glConfig.vidHeight * r_resolutionScale->integer, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+					backEnd.viewParms.viewportWidth = glConfig.vidWidth * r_resolutionScale->integer;
+					backEnd.viewParms.viewportHeight = glConfig.vidHeight * r_resolutionScale->integer;
+					resScaleInt = r_resolutionScale->integer;
+				}
+				else
+				{
+					resScaleInt = -(r_resolutionScale->integer);
+				}
+			}
+
+			if (resScaleInt)
+			{
+				RB_SetGL2DWidthHeight(backEnd.viewParms.viewportWidth / r_resolutionScale->integer, backEnd.viewParms.viewportHeight / r_resolutionScale->integer);
+
+				glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[1]);
+
+				glUseProgram(backEnd.objects.resScaleProgramObjects[PO_MINIFY_AVERAGE]);
+				glUniform1i(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_MINIFY_AVERAGE], "Texture"), 0);
+				glUniform1f(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_MINIFY_AVERAGE], "linearNum"), r_resolutionScale->integer);
+				glUniform2f(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_MINIFY_AVERAGE], "TextureSize"), backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight);
+
+				/*glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
+				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[2]);
+				glBlitFramebuffer(0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, 0, backEnd.viewParms.viewportWidth / r_resolutionScale->integer, backEnd.viewParms.viewportHeight / r_resolutionScale->integer, GL_COLOR_BUFFER_BIT, GL_LINEAR);*/
+
+				backEnd.viewParms.viewportWidth /= r_resolutionScale->integer;
+				backEnd.viewParms.viewportHeight /= r_resolutionScale->integer;
+
+				DrawStuff(backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight);
+
+				glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[1]);
+				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[2]);
+				glBlitFramebuffer(0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+				BindTexture(backEnd.objects.resScaleTextures[1]);
+			}
+		}
+
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		RB_SetGL2DWidthHeight(glConfig.vidWidth, glConfig.vidHeight);
+
+		if (resScaleInt > 0)
+		{
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[2]);
+			glBlitFramebuffer(0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		}
+		else if (!(r_highQualityScaling->integer & 1) /*|| r_resolutionScale->value < 1.f*/)
+		{
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			DrawStuffDynamicRes(glConfig.vidWidth, glConfig.vidHeight, dynamicScale);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		}
+		else
+		{
+			float radius;
+			float multiplier = r_scalingSampleRadiusMultiplier->value;
+			static int reduced = 0;
+			GLuint program;
+			if (r_highQualityScaling->integer & 4)
+			{
+				//int cFrame = tr.frameCount % r_supersampleMultiframe->integer;
+				int numJitters = min(max(r_supersample->integer, 1), 8);
+
+				//program = backEnd.objects.resScaleProgramObjects[backEnd.objects.resScaleWeightsCalculated ? PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS : PO_RESOLUTION_SCALE_PRE_CALC_WEIGHTS];
+				if (r_supersample->integer && r_supersampleMode->integer == 2)
+				{
+					program = backEnd.objects.resScaleProgramObjects[PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS_SUPERSAMPLE_RESOLVE];
+				}
+				else
+				{
+					program = backEnd.objects.resScaleProgramObjects[r_resolutionScale->value == r_resolutionScale->integer ? PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS : PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS_MULTI_PATTERN];
+				}
+				radius = r_scalingSampleRadius->value;
+				if (!backEnd.objects.resScaleWeightsCalculated)
+				{
+					int numPatterns, i, j;
+					if (r_resolutionScale->value - r_resolutionScale->integer > 0.f)
+					{
+						numPatterns = 1.f / (r_resolutionScale->value - r_resolutionScale->integer);
+						numPatterns = min(numPatterns, MAX_SCALING_SAMPLE_PATTERNS);
+					}
+					else
+					{
+						numPatterns = 1;
+					}
+					//numPatterns = 1;
+					RB_CalcScalingWeights(r_highQualityScalingMode->integer, radius, numPatterns, numJitters, backEnd.objects.supersampleJittersInPixel[0], &backEnd.objects.resScaleWeights);
+					glUseProgram(program);
+					glUniform2f(glGetUniformLocation(program, "InputPixelSize"), 1.f / backEnd.viewParms.viewportWidth, 1.f / backEnd.viewParms.viewportHeight);
+					glUniform2f(glGetUniformLocation(program, "OutputPixelSize"), 1.f / glConfig.vidWidth, 1.f / glConfig.vidHeight);
+					glUniform1fv(glGetUniformLocation(program, "Weights"), ARRAY_LEN(backEnd.objects.resScaleWeights.buffer), backEnd.objects.resScaleWeights.buffer);
+					/*glUniform2iv(glGetUniformLocation(program, "WeightsIndexes"), MAX_SCALING_SAMPLE_PATTERNS * MAX_SCALING_SAMPLE_PATTERNS, backEnd.objects.resScaleWeights.indexes);
+					glUniform2iv(glGetUniformLocation(program, "WeightCount"), MAX_SCALING_SAMPLE_PATTERNS * MAX_SCALING_SAMPLE_PATTERNS, backEnd.objects.resScaleWeights.counter);
+					glUniform2fv(glGetUniformLocation(program, "FirstPos"), MAX_SCALING_SAMPLE_PATTERNS * MAX_SCALING_SAMPLE_PATTERNS, backEnd.objects.resScaleWeights.FirstPos);*/
+					if (program == backEnd.objects.resScaleProgramObjects[PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS_MULTI_PATTERN])
+					{
+#if USE_WEIGHT_BUFFER_TEXTURE
+						glActiveTexture(GL_TEXTURE2);
+						glBindTexture(GL_TEXTURE_1D, backEnd.objects.resScaleWeights.bufferTexture);
+						glTexImage1D(GL_TEXTURE_1D, 0, GL_R8_SNORM, 400, 0, GL_RED, GL_FLOAT, backEnd.objects.resScaleWeights.buffer);
+						glActiveTexture(GL_TEXTURE0);
+
+						glUniform1i(glGetUniformLocation(program, "WeightBufferTexture"), 2);
+#endif
+
+						for (i = 0; i < numPatterns; i++)
+						{
+							for (j = 0; j < numPatterns; j++)
+							{
+								//glUniform1fv(glGetUniformLocation(program, va("Weights[%i][%i]", i, j)), ARRAY_LEN(backEnd.objects.resScaleWeights[i][j].buffer), backEnd.objects.resScaleWeights[i][j].buffer);
+								glUniform2i(glGetUniformLocation(program, va("WeightCount[%i][%i]", i, j)), backEnd.objects.resScaleWeights.counter[i][j][0][0], backEnd.objects.resScaleWeights.counter[i][j][0][1]);
+								glUniform2f(glGetUniformLocation(program, va("FirstPos[%i][%i]", i, j)), backEnd.objects.resScaleWeights.FirstPos[i][j][0][0], backEnd.objects.resScaleWeights.FirstPos[i][j][0][1]);
+								glUniform1i(glGetUniformLocation(program, va("WeightsIndexes[%i][%i]", i, j)), backEnd.objects.resScaleWeights.indexes[i][j]);
+							}
+						}
+
+						glUniform1i(glGetUniformLocation(program, "NumPatterns"), numPatterns);
+					}
+					else if (program == backEnd.objects.resScaleProgramObjects[PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS_SUPERSAMPLE_RESOLVE])
+					{
+						static GLint textureUnits[] = {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
+						for (i = 0; i < numJitters; i++)
+						{
+							glActiveTexture(GL_TEXTURE2 + i);
+							//glClientActiveTexture(GL_TEXTURE0 + i);
+							glBindTexture(GL_TEXTURE_2D, backEnd.objects.supersampleTextures[i]);
+							//glDisableClientState(GL_COLOR_ARRAY);
+						}
+						glActiveTexture(GL_TEXTURE0 + glState.currenttmu);
+						for (i = 0; i < numJitters; i++)
+						{
+							glUniform2i(glGetUniformLocation(program, va("WeightCount[%i]", i)), backEnd.objects.resScaleWeights.counter[0][0][i][0], backEnd.objects.resScaleWeights.counter[0][0][i][1]);
+							glUniform2f(glGetUniformLocation(program, va("FirstPos[%i]", i)), backEnd.objects.resScaleWeights.FirstPos[0][0][i][0], backEnd.objects.resScaleWeights.FirstPos[0][0][i][1]);
+						}
+						R_GetGLError();
+						glUniform1i(glGetUniformLocation(program, "NumJitters"), numJitters);
+						R_GetGLError();
+						glUniform1iv(glGetUniformLocation(program, "Textures"), numJitters, textureUnits);
+						R_GetGLError();
+						R_GetGLError();
+					}
+					else
+					{
+						glUniform2i(glGetUniformLocation(program, "WeightCount"), backEnd.objects.resScaleWeights.counter[0][0][0][0], backEnd.objects.resScaleWeights.counter[0][0][0][1]);
+						glUniform2f(glGetUniformLocation(program, "FirstPos"), backEnd.objects.resScaleWeights.FirstPos[0][0][0][0], backEnd.objects.resScaleWeights.FirstPos[0][0][0][1]);
+					}
+					backEnd.objects.resScaleWeightsCalculated = qtrue;
+				}
+			}
+			else if (r_highQualityScaling->integer & 8)
+			{
+				program = backEnd.objects.resScaleProgramObjects[backEnd.objects.resScaleWeightsCalculated ? PO_RESOLUTION_SCALE_REF_WEIGHT_BUFFER : PO_RESOLUTION_SCALE_CALC_WEIGHTS];
+				radius = r_scalingSampleRadius->value;
+			}
+			else if (r_highQualityScalingMode->integer == 1)
+			{
+				if (r_scalingSampleRadius->value == 2.0)
+				{
+					program = backEnd.objects.resScaleProgramObjects[PO_RESOLUTION_SCALE_LANCZOS2];
+				}
+				else if (r_scalingSampleRadius->value == 2.5)
+				{
+					program = backEnd.objects.resScaleProgramObjects[PO_RESOLUTION_SCALE_LANCZOS2_5];
+				}
+				else if (r_scalingSampleRadius->value == 3.0)
+				{
+					program = backEnd.objects.resScaleProgramObjects[PO_RESOLUTION_SCALE_LANCZOS3];
+				}
+				else
+				{
+					program = backEnd.objects.resScaleProgramObjects[PO_RESOLUTION_SCALE_MINIFY];
+				}
+
+				radius = r_scalingSampleRadius->value;
+			}
+			else if(r_highQualityScalingMode->integer == 2)
+			{
+				program = backEnd.objects.resScaleProgramObjects[PO_RESOLUTION_SCALE_MINIFY];
+				radius = 1.f;
+			}
+			else
+			{
+				program = backEnd.objects.resScaleProgramObjects[PO_RESOLUTION_SCALE_BICUBIC];
+				radius = 2.f;
+			}
+			glUseProgram(program);
+
+			if (!backEnd.objects.resScaleWeightsCalculated)
+			{
+				R_GetGLError();
+				glUniform1i(glGetUniformLocation(program, "Texture"), 0);
+				glUniform2f(glGetUniformLocation(program, "TextureSize"), backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight);
+				glUniform2f(glGetUniformLocation(program, "OutputSize"), glConfig.vidWidth, glConfig.vidHeight);
+				glUniform1i(glGetUniformLocation(program, "Mode"), r_highQualityScalingMode->integer);
+				glUniform1f(glGetUniformLocation(program, "Radius"), radius);
+				glUniform1f(glGetUniformLocation(program, "RadiusMultiplier"), multiplier);
+				glUniform1f(glGetUniformLocation(program, "ScaleFactor"), dynamicScale);
+				R_GetGLError();
+			}
+
+			if (program == backEnd.objects.resScaleProgramObjects[PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS_MULTI_PATTERN])
+			{
+				DrawStuff_GL430();
+			}
+			else if (r_highQualityScaling->integer & 8)
+			{
+				DrawStuff_GL430();
+				backEnd.objects.resScaleWeightsCalculated = qtrue;
+			}
+			else
+			{
+				DrawStuffDynamicRes(glConfig.vidWidth, glConfig.vidHeight, dynamicScale);
+			}
+		}
+	}
+	else
+	{
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
+		glReadBuffer(GL_COLOR_ATTACHMENT0);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+		glDrawBuffer(GL_BACK);
+		glBlitFramebuffer(0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, 0, glConfig.vidWidth, glConfig.vidHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+	}
+
+	if (r_fboFxaa->integer & 1)
+	{
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, backEnd.objects.windowSizeFramebuffer);
+		glReadBuffer(GL_BACK);
+		glBlitFramebuffer(0, 0, glConfig.vidWidth, glConfig.vidHeight, 0, 0, glConfig.vidWidth, glConfig.vidHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		RB_PerformFxaa(glConfig.vidWidth, glConfig.vidHeight, backEnd.objects.windowSizeTexture, 0);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+
+	//glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffersMultisample[0]);
+	//glBlitFramebuffer(0, 0, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, 0, 0, glConfig.vidWidth, glConfig.vidHeight, GL_STENCIL_BUFFER_BIT, GL_NEAREST);
+
+	R_GetGLError();
+
+	glUseProgram(0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+#define USE_FBO ((r_fboMultisample->integer || r_resolutionScale->value != 1.f || r_supersample->integer) && backEnd.refdef.y == 0)
+/**
+* @brief RB_DrawSurfs
+* @param[in] data
+* @return
+*/
+void *RB_DrawSurfs(const void *data)
 {
 	const drawSurfsCommand_t *cmd;
+	int i;
+	GLenum err;
 
 	// finish any 2D drawing if needed
 	if (tess.numIndexes)
@@ -1277,7 +2137,125 @@ const void *RB_DrawSurfs(const void *data)
 	backEnd.refdef    = cmd->refdef;
 	backEnd.viewParms = cmd->viewParms;
 
-	RB_RenderDrawSurfList(cmd->drawSurfs, cmd->numDrawSurfs);
+	if (USE_FBO)
+	{
+		RB_PrepairOffScreenBuffers();
+	}
+
+	/*if (glConfigExt.framebufferSrgbAvailable)
+	{
+	glEnable(GL_FRAMEBUFFER_SRGB);
+	}
+	else
+	{
+	glDisable(GL_FRAMEBUFFER_SRGB);
+	}*/
+
+	if (r_supersample->integer && backEnd.refdef.y == 0)
+	{
+		static int cFrame = 0;
+		mat4_t orgProjectionMatrix, orgModelMatrix, orgWorldModelMatrix;
+		int i;
+		int renderBeginTime = 0, renderEndTime = 0, firstFrameBeginTime = 0;
+		float jitters[MAX_SUPERSAMPLE_SAMPLES][2]; //, jittersInPixel[MAX_SUPERSAMPLE_SAMPLES][2];
+		int samples = max(1, r_supersample->integer);
+
+		mat4_copy(backEnd.viewParms.projectionMatrix, orgProjectionMatrix);
+		for (i = 0; i < samples; i++)
+		{
+			mat4_t ssaa;
+			mat4_reset_translate(ssaa, (backEnd.objects.supersampleOffsets[cFrame][i][0] * 2 - 1) * r_supersampleSmoothness->value / backEnd.viewParms.viewportWidth, (backEnd.objects.supersampleOffsets[cFrame][i][1] * 2 - 1) * r_supersampleSmoothness->value / backEnd.viewParms.viewportHeight, 0);
+			mat4_mult(ssaa, orgProjectionMatrix, backEnd.viewParms.projectionMatrix);
+
+			RB_RenderDrawSurfList(cmd->drawSurfs, cmd->numDrawSurfs);
+
+			//if (USE_FBO)
+			if (1)
+			{
+				/*if (glConfigExt.framebufferSrgbAvailable)
+				{
+				glEnable(GL_FRAMEBUFFER_SRGB);
+				}*/
+
+				glBindFramebuffer(GL_DRAW_FRAMEBUFFER, backEnd.objects.supersampleFramebuffers[i]);
+				glBlitFramebuffer(0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+				glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffersMultisample[0]);
+			}
+			else
+			{
+				glAccum(i ? GL_ACCUM : GL_LOAD, 1.f / r_supersample->integer);
+			}
+		}
+		//if (USE_FBO)
+		if (r_resolutionScale->value == 1.f || r_supersampleMode->integer != 2)
+		{
+			static GLint textureUnits[] = {0, 1 ,2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
+
+			for (i = 0; i < samples; i++)
+			{
+				glActiveTexture(GL_TEXTURE0 + i);
+				//glClientActiveTexture(GL_TEXTURE0 + i);
+				glBindTexture(GL_TEXTURE_2D, backEnd.objects.supersampleTextures[i]);
+				//glDisableClientState(GL_COLOR_ARRAY);
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
+			RB_SetGL2DWidthHeight(backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight);
+			glUseProgram(backEnd.objects.resScaleProgramObjects[PO_SUPERSAMPLE_RESOLVE]);
+			glUniform1iv(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_SUPERSAMPLE_RESOLVE], "Textures"), samples, textureUnits);
+			glUniform1i(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_SUPERSAMPLE_RESOLVE], "NumTextures"), samples);
+			glUniform1i(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_SUPERSAMPLE_RESOLVE], "Mode"), r_supersampleMode->integer);
+			//glUniform1i(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_SUPERSAMPLE_RESOLVE], "Texture"), textureUnits[0]);
+			glUniform2f(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_SUPERSAMPLE_RESOLVE], "TextureSize"), backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight);
+			glUniform2f(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_SUPERSAMPLE_RESOLVE], "OutputSize"), backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight);
+			glUniform1f(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_SUPERSAMPLE_RESOLVE], "Radius"), r_scalingSampleRadius->value);
+			switch (r_supersampleMode->integer)
+			{
+			case 2:
+				glUniform1fv(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_SUPERSAMPLE_RESOLVE], "Weights"), MAX_SUPERSAMPLE_SAMPLES * 36, backEnd.objects.supersampleWeights[cFrame]);
+				glUniform2fv(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_SUPERSAMPLE_RESOLVE], "Jitters"), samples, backEnd.objects.supersampleJittersInPixel);
+				break;
+			case 1:
+				for (i = 0; i < r_supersample->integer; i++)
+				{
+					jitters[i][0] = backEnd.objects.supersampleJittersInPixel[cFrame][i][0] / backEnd.viewParms.viewportWidth;
+					jitters[i][1] = backEnd.objects.supersampleJittersInPixel[cFrame][i][1] / backEnd.viewParms.viewportHeight;
+				}
+				glUniform2fv(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_SUPERSAMPLE_RESOLVE], "Jitters"), samples, jitters);
+				break;
+			}
+			DrawStuff(backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight);
+			glUseProgram(0);
+			glActiveTexture(GL_TEXTURE0 + glState.currenttmu);
+			//glClientActiveTexture(GL_TEXTURE0 + glState.currenttmu);
+		}
+
+		cFrame++;
+		if (cFrame >= r_supersampleMultiframe->integer)
+		{
+			cFrame = 0;
+		}
+	}
+	else
+	{
+		RB_RenderDrawSurfList(cmd->drawSurfs, cmd->numDrawSurfs);
+	}
+
+	// draw sun
+	RB_DrawSun();
+
+	// darken down any stencil shadows
+	RB_ShadowFinish();
+
+	// add light flares on lights that aren't obscured
+	RB_RenderFlares();
+
+	if (USE_FBO)
+	{
+		RB_UtilizeOffScreenBuffers();
+	}
+
+	//glDisable(GL_FRAMEBUFFER_SRGB);
 
 	return ( const void * ) (cmd + 1);
 }

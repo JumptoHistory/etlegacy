@@ -36,6 +36,7 @@
 #include "tr_local.h"
 
 glconfig_t glConfig;
+glconfigExt_t glConfigExt;
 qboolean   textureFilterAnisotropic = qfalse;
 int        maxAnisotropy            = 0;
 
@@ -168,6 +169,28 @@ cvar_t *r_maxPolyVerts;
 
 cvar_t *r_gfxInfo;
 
+cvar_t *r_supersample;
+cvar_t *r_supersampleMultiframe;
+cvar_t *r_supersampleSmoothness;
+cvar_t *r_supersampleMode;
+cvar_t *r_supersampleLodFix;
+cvar_t *r_ignoreNoMipmaps;
+//cvar_t *r_generateMipMaps;
+cvar_t *r_resolutionScale;
+cvar_t *r_resolutionScaleLodFix;
+cvar_t *r_highQualityScaling;
+cvar_t *r_highQualityScalingMode;
+cvar_t *r_scalingSampleRadius;
+cvar_t *r_scalingSampleRadiusMultiplier;
+cvar_t *r_fboMultisample;
+cvar_t *r_fboFxaa;
+cvar_t *r_priorityShaderFileNames;
+cvar_t *r_customShaderFiles;
+cvar_t *r_transparencyAlphaBlend;
+
+cvar_t *r_extGenerateMipmap;
+cvar_t *r_extTextureNonPowerOfTwo;
+
 /**
  * @brief This function is responsible for initializing a valid OpenGL subsystem
  *
@@ -188,11 +211,13 @@ static void InitOpenGL(void)
 
 	if (glConfig.vidWidth == 0)
 	{
+		windowContext_t windowContext = {4, 3, GL_CONTEXT_COMP};
 		char  renderer_buffer[1024];
 		GLint temp;
 
 		Com_Memset(&glConfig, 0, sizeof(glConfig));
-		ri.GLimp_Init(&glConfig, NULL);
+		ri.GLimp_Init(&glConfig, &windowContext);
+		ri.GLimp_GetExtraGLConfigVariables(&glConfigExt);
 
 		strcpy(renderer_buffer, glConfig.renderer_string);
 		Q_strlwr(renderer_buffer);
@@ -207,6 +232,7 @@ static void InitOpenGL(void)
 			glConfig.maxTextureSize = 0;
 		}
 	}
+
 
 	// print info
 	GfxInfo_f();
@@ -1009,6 +1035,7 @@ void GfxInfo_f(void)
 	Ren_Print("compiled vertex arrays: %s\n", enablestrings[qglLockArraysEXT != 0]);
 	Ren_Print("texenv add: %s\n", enablestrings[glConfig.textureEnvAddAvailable != 0]);
 	Ren_Print("compressed textures: %s\n", enablestrings[glConfig.textureCompression != TC_NONE]);
+	Ren_Print("multisample max samples: %d\n", glConfigExt.maxSamples);
 
 	if (r_finish->integer)
 	{
@@ -1026,6 +1053,35 @@ void R_Register(void)
 	com_altivec = ri.Cvar_Get("com_altivec", "1", CVAR_ARCHIVE);
 #endif
 #endif
+
+	r_supersample = ri.Cvar_Get("r_supersample", "0", 0);
+	r_supersampleMultiframe = ri.Cvar_Get("r_supersampleMultiframe", "2", 0);
+	ri.Cvar_CheckRange(r_supersampleMultiframe, 1, 4, qtrue);
+	r_supersampleSmoothness = ri.Cvar_Get("r_supersampleSmoothness", "1.0", 0);
+	ri.Cvar_CheckRange(r_supersampleSmoothness, 0.25, 2.0, qfalse);
+	r_supersampleMode = ri.Cvar_Get("r_supersampleMode", "0", 0);
+	r_supersampleLodFix = ri.Cvar_Get("r_supersampleLodFix", "0.5", 0);
+	ri.Cvar_CheckRange(r_supersampleLodFix, 0.0, 2.0, qfalse);
+	r_ignoreNoMipmaps = ri.Cvar_Get("r_ignoreNoMipmaps", "0", 0);
+	//r_generateMipMaps = ri.Cvar_Get("r_generateMipMaps", "1", CVAR_LATCH);
+	r_resolutionScale = ri.Cvar_Get("r_resolutionScale", "1.0", 0);
+	ri.Cvar_CheckRange(r_resolutionScale, 0.25, 4.0, qfalse);
+	r_resolutionScaleLodFix = ri.Cvar_Get("r_resolutionScaleLodFix", "0.0", 0);
+	ri.Cvar_CheckRange(r_resolutionScaleLodFix, 0.0, 1.0, qfalse);
+	r_highQualityScaling = ri.Cvar_Get("r_highQualityScaling", "1", 0);
+	r_highQualityScalingMode = ri.Cvar_Get("r_highQualityScalingMode", "0", 0);
+	r_scalingSampleRadius = ri.Cvar_Get("r_scalingSampleRadius", "2.0", 0);
+	ri.Cvar_CheckRange(r_scalingSampleRadius, 1.0, 3.0, qfalse);
+	r_scalingSampleRadiusMultiplier = ri.Cvar_Get("r_scalingSampleRadiusMultiplier", "1.0", 0);
+	ri.Cvar_CheckRange(r_scalingSampleRadiusMultiplier, 0.5, 1.5, qfalse);
+	r_fboMultisample = ri.Cvar_Get("r_fboMultisample", "0", CVAR_ARCHIVE);
+	ri.Cvar_CheckRange(r_fboMultisample, -1, 32, qtrue);
+	r_fboFxaa = ri.Cvar_Get("r_fboFxaa", "0", 0);
+	r_priorityShaderFileNames = ri.Cvar_Get("r_priorityShaderFileNames", "", CVAR_CHEAT | CVAR_LATCH);
+	r_customShaderFiles = ri.Cvar_Get("r_customShaderFiles", "", CVAR_CHEAT | CVAR_LATCH);
+	r_transparencyAlphaBlend = ri.Cvar_Get("r_transparencyAlphaBlend", "1", CVAR_LATCH);
+	r_extGenerateMipmap           = ri.Cvar_Get("r_ext_generate_mipmap", "1", CVAR_LATCH);
+	r_extTextureNonPowerOfTwo     = ri.Cvar_Get("r_extTextureNonPowerOfTwo", "0", CVAR_LATCH);
 
 	// latched and archived variables
 	r_allowExtensions       = ri.Cvar_Get("r_allowExtensions", "1", CVAR_ARCHIVE | CVAR_LATCH | CVAR_UNSAFE);
@@ -1174,6 +1230,191 @@ void R_Register(void)
 }
 
 /**
+* @brief R_LoadAndCompileShaderSourceFile
+* @parm[in] shaderType
+* @parm[in] filename
+* @return
+*/
+GLuint R_LoadAndCompileShaderSourceFile(GLenum shaderType, const char *filename)
+{
+	GLchar *shaderSource;
+	GLuint shaderObject;
+	unsigned long vlen, flen;
+	GLint compiled;
+
+	vlen = ri.FS_ReadFile(filename, (void **)&shaderSource);
+	if (!shaderSource)
+	{
+		Ren_Drop("Could not load %s\n", filename);
+	}
+	shaderObject = glCreateShader(shaderType);
+	glShaderSourceARB(shaderObject, 1, &shaderSource, &vlen);
+	glCompileShaderARB(shaderObject);
+	ri.FS_FreeFile(shaderSource);
+	glGetObjectParameterivARB(shaderObject, GL_COMPILE_STATUS, &compiled);
+	if (!compiled)
+	{
+		GLint blen = 0;	
+		GLsizei slen = 0;
+
+		glGetShaderiv(shaderObject, GL_INFO_LOG_LENGTH , &blen);       
+		if (blen > 1)
+		{
+			GLchar* compiler_log = (GLchar*)malloc(blen);
+
+			glGetInfoLogARB(shaderObject, blen, &slen, compiler_log);
+			Ren_Drop("Failed to compile %s: %s\n", filename, compiler_log);
+			free (compiler_log);
+		}
+		else
+		{
+			Ren_Drop("Failed to compile %s\n", filename);
+		}
+		return 0;
+	}
+	return shaderObject;
+}
+
+/**
+* @brief R_InitBufferObjects
+*/
+void R_InitBufferObjects(void)
+{
+	char *shaderFilenames[PO_NUM_PROGRAM_OBJECTS][2] = {{NULL}};
+	GLuint genericVertexShaderObject;
+	GLuint vertexShaderObject, fragmentShaderObject;
+	GLint linked;
+	int i;
+
+	shaderFilenames[PO_RESOLUTION_SCALE_MINIFY][1] = "glsl/resolutionScaleMinify_f.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_LANCZOS2][1] = "glsl/resolutionScaleLanczos2_f.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_LANCZOS2_5][1] = "glsl/resolutionScaleLanczos2_5_f.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_LANCZOS3][1] = "glsl/resolutionScaleLanczos3_f.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_BICUBIC][1] = "glsl/resolutionScaleBicubic_f.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_CALC_WEIGHTS][0] = "glsl/generic_430_v.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_REF_WEIGHT_BUFFER][0] = "glsl/generic_430_v.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_PRE_CALC_WEIGHTS][0] = "glsl/generic_430_v.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS_MULTI_PATTERN][0] = "glsl/generic_430_v.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_CALC_WEIGHTS][1] = "glsl/resolutionScaleCalcWeights_f.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_REF_WEIGHT_BUFFER][1] = "glsl/resolutionScaleRefWeightBuffer_f.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_PRE_CALC_WEIGHTS][1] = "glsl/resolutionScalePreCalc_f.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS][1] = "glsl/resolutionScaleRefPrecalcedWeights_f.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS_SUPERSAMPLE_RESOLVE][1] = "glsl/resolutionScaleRefPrecalcedWeights_supersampleResolve_f.glsl";
+	shaderFilenames[PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS_MULTI_PATTERN][1] = "glsl/resolutionScaleRefPrecalcedWeightsMultiPattern_f.glsl";
+	shaderFilenames[PO_MINIFY_AVERAGE][1] = "glsl/minifyAverage_f.glsl";
+	shaderFilenames[PO_FXAA][0] = "glsl/fxaa_v.glsl";
+	shaderFilenames[PO_FXAA][1] = "glsl/fxaa_f.glsl";
+	shaderFilenames[PO_SUPERSAMPLE_RESOLVE][1] = "glsl/supersampleResolve_f.glsl";
+
+	// generic vertex shader
+	genericVertexShaderObject = R_LoadAndCompileShaderSourceFile(GL_VERTEX_SHADER, "glsl/generic_v.glsl");
+
+#if USE_WEIGHT_BUFFER_TEXTURE
+	glGenTextures(1, &backEnd.objects.resScaleWeights.bufferTexture);
+#endif
+
+	for (i = 0; i < ARRAY_LEN(backEnd.objects.resScaleProgramObjects); i++)
+	{
+		if (!shaderFilenames[i][0])
+		{
+			if (!shaderFilenames[i][1])
+			{
+				continue;
+			}
+			vertexShaderObject = genericVertexShaderObject;
+		}
+		else
+		{
+			vertexShaderObject = R_LoadAndCompileShaderSourceFile(GL_VERTEX_SHADER, shaderFilenames[i][0]);
+		}
+		fragmentShaderObject = R_LoadAndCompileShaderSourceFile(GL_FRAGMENT_SHADER, shaderFilenames[i][1]);
+
+		backEnd.objects.resScaleProgramObjects[i] = glCreateProgram();
+		glAttachShader(backEnd.objects.resScaleProgramObjects[i], vertexShaderObject);
+		glAttachShader(backEnd.objects.resScaleProgramObjects[i], fragmentShaderObject);
+		//glBindAttribLocation(backEnd.objects.resScaleProgramObjects[i], 0, "position");
+		//glBindAttribLocation(tr.resScaleProgramObject, 1, "inputTextureCoordinate");
+		glLinkProgram(backEnd.objects.resScaleProgramObjects[i]);
+
+		glGetProgramiv(backEnd.objects.resScaleProgramObjects[0], GL_LINK_STATUS, &linked);
+		if (!linked)
+		{
+			Ren_Drop("Could not link %s and %s\n", shaderFilenames[i][0] ? shaderFilenames[i][0] : "glsl/generic_v.glsl", shaderFilenames[i][1]);
+		}
+
+		if (vertexShaderObject != genericVertexShaderObject);
+		{
+			glDeleteShader(vertexShaderObject);
+		}
+		glDeleteShader(fragmentShaderObject);
+	}
+	glDeleteShader(genericVertexShaderObject);
+
+	glGenFramebuffers(1, &backEnd.objects.windowSizeFramebuffer);
+	glGenTextures(1, &backEnd.objects.windowSizeTexture);
+	glState.currenttextures[glState.currenttmu] = backEnd.objects.windowSizeTexture;
+	glBindTexture(GL_TEXTURE_2D, backEnd.objects.windowSizeTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, glConfig.vidWidth, glConfig.vidHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.windowSizeFramebuffer);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, backEnd.objects.windowSizeTexture, 0);
+
+	glGenFramebuffers(ARRAY_LEN(backEnd.objects.resScaleFramebuffers), backEnd.objects.resScaleFramebuffers);
+	glGenFramebuffers(ARRAY_LEN(backEnd.objects.resScaleFramebuffersMultisample), &backEnd.objects.resScaleFramebuffersMultisample);
+	glGenTextures(ARRAY_LEN(backEnd.objects.resScaleTextures), backEnd.objects.resScaleTextures);
+	glGenRenderbuffers(ARRAY_LEN(backEnd.objects.resScaleColorBuffers), backEnd.objects.resScaleColorBuffers);
+	glGenRenderbuffers(1, &backEnd.objects.resScaleColorBufferMultisample);
+	glGenRenderbuffers(1, &backEnd.objects.resScaleDepthBufferMultisample);
+	glGenTextures(ARRAY_LEN(backEnd.objects.resScaleDepthTexturesMultisample), backEnd.objects.resScaleDepthTexturesMultisample);
+	glGenTextures(ARRAY_LEN(backEnd.objects.resScaleTexturesMultisample), backEnd.objects.resScaleTexturesMultisample);
+
+	glGenFramebuffers(ARRAY_LEN(backEnd.objects.supersampleFramebuffers), backEnd.objects.supersampleFramebuffers);
+	glGenTextures(ARRAY_LEN(backEnd.objects.supersampleTextures), backEnd.objects.supersampleTextures);
+
+	if (r_supersample->integer)
+	{
+		RB_SetupSupersampleBuffers();
+	}
+	RB_SetupResolutionScaleBuffers();
+}
+
+void R_DeleteBufferObjects(void)
+{
+	int i;
+
+	glDeleteFramebuffers(ARRAY_LEN(backEnd.objects.resScaleFramebuffers), backEnd.objects.resScaleFramebuffers);
+	glDeleteRenderbuffers(ARRAY_LEN(backEnd.objects.resScaleColorBuffers), backEnd.objects.resScaleColorBuffers);
+	glDeleteRenderbuffers(1, &backEnd.objects.resScaleDepthBuffer);
+	glDeleteTextures(ARRAY_LEN(backEnd.objects.resScaleTextures), backEnd.objects.resScaleTextures);
+	glDeleteFramebuffers(ARRAY_LEN(backEnd.objects.resScaleFramebuffersMultisample), &backEnd.objects.resScaleFramebuffersMultisample);
+	glDeleteRenderbuffers(1, &backEnd.objects.resScaleColorBufferMultisample);
+	glDeleteRenderbuffers(1, &backEnd.objects.resScaleDepthBufferMultisample);
+	glDeleteFramebuffers(1, &backEnd.objects.windowSizeFramebuffer);
+	glDeleteTextures(1, &backEnd.objects.windowSizeTexture);
+	glDeleteFramebuffers(ARRAY_LEN(backEnd.objects.supersampleFramebuffers), backEnd.objects.supersampleFramebuffers);
+	glDeleteTextures(ARRAY_LEN(backEnd.objects.supersampleTextures), backEnd.objects.supersampleTextures);
+	glDeleteTextures(ARRAY_LEN(backEnd.objects.resScaleDepthTexturesMultisample), backEnd.objects.resScaleDepthTexturesMultisample);
+	glDeleteTextures(ARRAY_LEN(backEnd.objects.resScaleTexturesMultisample), backEnd.objects.resScaleTexturesMultisample);
+
+	glDeleteFramebuffers(ARRAY_LEN(backEnd.objects.supersampleFramebuffers), backEnd.objects.supersampleFramebuffers);
+	glDeleteTextures(ARRAY_LEN(backEnd.objects.supersampleTextures), backEnd.objects.supersampleTextures);
+
+	glDeleteBuffers(ARRAY_LEN(backEnd.objects.resScaleWeightBufferObjects), &backEnd.objects.resScaleWeightBufferObjects);
+
+#if USE_WEIGHT_BUFFER_TEXTURE
+	glDeleteTextures(1, &backEnd.objects.resScaleWeights.bufferTexture);
+#endif
+
+	for (i = 0; i < ARRAY_LEN(backEnd.objects.resScaleProgramObjects); i++)
+	{
+		glDeleteProgram(backEnd.objects.resScaleProgramObjects[i]);
+	}
+}
+
+/**
  * @brief R_Init
  */
 void R_Init(void)
@@ -1236,6 +1477,8 @@ void R_Init(void)
 	R_InitNextFrame();
 
 	InitOpenGL();
+
+	R_InitBufferObjects();
 
 	R_InitImages();
 
@@ -1314,6 +1557,8 @@ void RE_Shutdown(qboolean destroyWindow)
 	R_DoneFreeType();
 
 	R_ShutdownGamma();
+
+	R_DeleteBufferObjects();
 
 	// shut down platform specific OpenGL stuff
 	if (destroyWindow)

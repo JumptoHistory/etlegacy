@@ -3161,7 +3161,7 @@ static void R_CreateWorldVBO()
 	//int             numSurfaces;
 	bspSurface_t *surface;
 	//trRefLight_t   *light;
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 	int startTime, endTime;
 
 	startTime = ri.Milliseconds();
@@ -3465,7 +3465,7 @@ static void R_CreateWorldVBO()
 
 	s_worldData.ibo = R_CreateIBO2(va("staticBspModel0_IBO %i", 0), numTriangles, triangles, VBO_USAGE_STATIC);
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 	endTime = ri.Milliseconds();
 	Ren_Developer("world VBO calculation time = %5.2f seconds\n", (endTime - startTime) / 1000.0);
 #endif
@@ -7496,7 +7496,7 @@ void R_PrecacheInteractions()
 	int          i;
 	trRefLight_t *light;
 	bspSurface_t *surface;
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 	int startTime, endTime;
 
 	startTime = ri.Milliseconds();
@@ -7596,7 +7596,7 @@ void R_PrecacheInteractions()
 
 	Com_DestroyGrowList(&s_interactions);
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 	Ren_Developer("%i interactions precached\n", s_worldData.numInteractions);
 
 	if (r_shadows->integer >= SHADOWING_ESM16)
@@ -8007,17 +8007,9 @@ qboolean R_LoadCubeProbe(int cubeProbeNum, int totalCubeProbes, byte *cubeTemp[6
 			ri.FS_FreeFile(buffer);
 			buffer = NULL;
 		}
-            
 		lastFileNum = fileNum + 1;
 		filename = va("cm/%s/cm_%04d.tga", s_worldData.baseName, fileNum + 1);
-                
-		if (ri.FS_FOpenFileRead(filename, NULL, qfalse) <= 0)
-		{
-			return qfalse;
-		}
-                
 		bytesRead = ri.FS_ReadFile(filename, (void **)&buffer);
-                
 		if (bytesRead <= 0)
 		{
 			//Ren_Print("loadCubeProbes: %s not found", filename);
@@ -8080,7 +8072,7 @@ void R_BuildCubeMaps(void)
 	size_t ticsNeeded;
 #endif
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 	int endTime, startTime = ri.Milliseconds();
 #endif
 
@@ -8100,7 +8092,7 @@ void R_BuildCubeMaps(void)
 	fileName = va("cm/%s/cm_0000.tga", s_worldData.baseName);
 	if (!ri.FS_FileExists(fileName))
 	{
-		//pixeldata = ri.Z_Malloc(REF_CUBEMAP_STORE_SIZE * REF_CUBEMAP_STORE_SIZE * 4);
+		pixeldata = ri.Z_Malloc(REF_CUBEMAP_STORE_SIZE * REF_CUBEMAP_STORE_SIZE * 4);
 		createCM = qtrue;
 		//Ren_Developer("Cubemaps not found!\n");
 	}
@@ -8280,12 +8272,12 @@ void R_BuildCubeMaps(void)
 	}
 
 #if 1
-	ticsPerProbe = 50.f / (float)tr.cubeProbes.currentElements; // currentElements is != 0 for sure
+	ticsPerProbe = 50 / tr.cubeProbes.currentElements; // currentElements is != 0 for sure
 #endif
 	Ren_Print("...creating %d cubemaps\n", tr.cubeProbes.currentElements);
 	ri.Cvar_Set("viewlog", "1");
 	Ren_Print("0%%  10   20   30   40   50   60   70   80   90   100%%\n");
-	Ren_Print("|----|----|----|----|----|----|----|----|----|----|\n ");
+	Ren_Print("|----|----|----|----|----|----|----|----|----|----|\n");
 	for (j = 0; j < tr.cubeProbes.currentElements; j++)
 	{
 		cubeProbe = (cubemapProbe_t *)Com_GrowListElement(&tr.cubeProbes, j);
@@ -8294,7 +8286,7 @@ void R_BuildCubeMaps(void)
 		//		  (int)cubeProbe->origin[2]);
 #if 1
 		// we are at probe j
-		int currentTics = (int)(j * ticsPerProbe); // explicit typecast from float to int. This will floor() the result (which is what we want)
+		int currentTics = j * ticsPerProbe; // implicit typecast from float to int. This will floor() the result (which is what we want)
 		
 		if (currentTics != tics)
 		{
@@ -8336,11 +8328,6 @@ void R_BuildCubeMaps(void)
 
 		if (createCM)
 		{
-			if (!pixeldata)
-			{
-                                pixeldata = ri.Z_Malloc(REF_CUBEMAP_STORE_SIZE * REF_CUBEMAP_STORE_SIZE * 4);
-			}
-                    
 			// render the cubemap
 			VectorCopy(cubeProbe->origin, rf.vieworg);
 		
@@ -8557,7 +8544,7 @@ void R_BuildCubeMaps(void)
 
 		glBindTexture(cubeProbe->cubemap->type, 0);
 	}
-	Ren_Print("\n");
+	//Ren_Print("\n");
 
 	if (createCM)
 	{
@@ -8570,15 +8557,11 @@ void R_BuildCubeMaps(void)
 		}
 
 		Ren_Print("Wrote %d cubemaps in %d files.\n", j, fileCount + 1);
+		ri.Free(pixeldata);
 	}
 	else
 	{
 		Ren_Print("Read %d cubemaps from files.\n", tr.cubeProbes.currentElements -1);
-	}
-        
-	if (pixeldata)
-	{
-		ri.Free(pixeldata);   
 	}
 
 	// turn pixel targets off
@@ -8638,7 +8621,7 @@ void R_BuildCubeMaps(void)
 	}
 #endif
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 	endTime = ri.Milliseconds();
 	Ren_Developer("cubemap probes pre-rendering time of %i cubes = %5.2f seconds\n", tr.cubeProbes.currentElements,
 	              (endTime - startTime) / 1000.0);

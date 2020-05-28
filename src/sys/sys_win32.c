@@ -182,9 +182,9 @@ char *Sys_GetCurrentUser(void)
  */
 qboolean Sys_LowPhysicalMemory(void)
 {
-	MEMORYSTATUS stat;
-	GlobalMemoryStatus(&stat);
-	return (stat.dwTotalPhys <= MEM_THRESHOLD) ? qtrue : qfalse;
+	MEMORYSTATUSEX stat;
+	GlobalMemoryStatusEx(&stat);
+	return (stat.ullTotalPhys <= MEM_THRESHOLD) ? qtrue : qfalse;
 }
 
 /**
@@ -250,7 +250,7 @@ FILE *Sys_FOpen(const char *ospath, const char *mode)
 
 	// Windows API ignores all trailing spaces and periods which can get around Quake 3 file system restrictions.
 	length = strlen(ospath);
-	if (length == 0 || ospath[length - 1] == ' ' || ospath[length - 1] == '.')
+	if (length == 0 || ospath[length-1] == ' ' || ospath[length-1] == '.')
 	{
 		return NULL;
 	}
@@ -504,19 +504,12 @@ char **Sys_ListFiles(const char *directory, const char *extension, const char *f
 
 			if (invalid)
 			{
-				int error;
-
-				error = remove(va("%s%c%s", directory, PATH_SEP, findinfo.name));
-
-				if (error != 0)
-				{
-					Com_Printf(S_COLOR_RED "ERROR: cannot delete '%s'.\n", findinfo.name);
-				}
+				remove(va("%s%c%s", directory, PATH_SEP, findinfo.name));
 #ifdef DEDICATED
 				Sys_Error("Invalid character in file name '%s'. The file has been removed. Start the server again.", findinfo.name);
 #else
 				Cvar_Set("com_missingFiles", "");
-				Com_Error(ERR_DROP, "Invalid file name detected and removed\nFile \"%s\" contains an invalid character for ET: Legacy file structure.\nSome admins take advantage of this to ensure their menu loads last.\nThe file has been removed.", findinfo.name);
+				Com_Error(ERR_DROP, "Invalid file name detected & removed\nFile \"%s\" did contain an invalid character for ET: L file structure.\nSome admins take advantage of this to ensure their menu loads last.\nThe file has been removed.", findinfo.name);
 #endif
 			}
 
@@ -706,12 +699,23 @@ dialogResult_t Sys_Dialog(dialogType_t type, const char *message, const char *ti
 	}
 }
 
+#ifndef DEDICATED
+static qboolean SDL_VIDEODRIVER_externallySet = qfalse;
+#endif
+
 /**
  * @brief Windows specific "safe" GL implementation initialisation
  */
 void Sys_GLimpSafeInit(void)
 {
-	// NOP
+#ifndef DEDICATED
+	if (!SDL_VIDEODRIVER_externallySet)
+	{
+		// Here, we want to let SDL decide what do to unless
+		// explicitly requested otherwise
+		Sys_SetEnv("SDL_VIDEODRIVER", "");
+	}
+#endif
 }
 
 /**
@@ -719,7 +723,27 @@ void Sys_GLimpSafeInit(void)
  */
 void Sys_GLimpInit(void)
 {
-	// NOP
+#ifndef DEDICATED
+	if (!SDL_VIDEODRIVER_externallySet)
+	{
+		// It's a little bit weird having in_mouse control the
+		// video driver, but from ioq3's point of view they're
+		// virtually the same except for the mouse input anyway
+		if (Cvar_VariableIntegerValue("in_mouse") == -1)
+		{
+			// Use the windib SDL backend, which is closest to
+			// the behaviour of idq3 with in_mouse set to -1
+			Sys_SetEnv("SDL_VIDEODRIVER", "windib");
+		}
+#if 0
+		else
+		{
+			// Use the DirectX SDL backend
+			Sys_SetEnv("SDL_VIDEODRIVER", "directx");
+		}
+#endif
+	}
+#endif
 }
 
 /**
@@ -962,6 +986,21 @@ void Sys_SetProcessProperties(void)
 		Com_DPrintf(S_COLOR_RED "Sys_SetProcessProperties failed to set process affinity");
 	}
 #endif
+	extern cvar_t *sys_processAffinityMask;
+	if (sys_processAffinityMask && sys_processAffinityMask->integer)
+	{
+		BOOL success = SetProcessAffinityMask(process, sys_processAffinityMask->integer);
+		if (success)
+		{
+			//Yup great
+			Com_DPrintf(S_COLOR_GREEN "Sys_SetProcessProperties succesfully set process affinity");
+		}
+		else
+		{
+			//Fuck!
+			Com_DPrintf(S_COLOR_RED "Sys_SetProcessProperties failed to set process affinity");
+		}
+	}
 }
 
 WinVars_t g_wv;
@@ -992,6 +1031,21 @@ void Sys_PlatformInit(void)
 
 	// no abort/retry/fail errors
 	SetErrorMode(SEM_FAILCRITICALERRORS);
+
+#ifndef DEDICATED
+	const char *SDL_VIDEODRIVER = getenv("SDL_VIDEODRIVER");
+
+	if (SDL_VIDEODRIVER)
+	{
+		Com_Printf("SDL_VIDEODRIVER is externally set to \"%s\", "
+		           "in_mouse -1 will have no effect\n", SDL_VIDEODRIVER);
+		SDL_VIDEODRIVER_externallySet = qtrue;
+	}
+	else
+	{
+		SDL_VIDEODRIVER_externallySet = qfalse;
+	}
+#endif
 }
 
 /**

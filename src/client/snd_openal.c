@@ -55,6 +55,7 @@ cvar_t *s_alDevice;
 //cvar_t *s_alInputDevice;
 cvar_t *s_alAvailableDevices;
 //cvar_t *s_alAvailableInputDevices;
+cvar_t *s_debugStreams;
 
 static qboolean enumeration_ext     = qfalse;
 static qboolean enumeration_all_ext = qfalse;
@@ -1553,7 +1554,7 @@ static void S_AL_SrcLoop(alSrcPriority_t priority, sfxHandle_t sfx,
 
 	// If this is not set then the looping sound is stopped.
 	sent->loopAddedThisFrame = qtrue;
-
+	
 	// UGH
 	// These lines should be called via S_AL_SrcSetup, but we
 	// can't call that yet as it buffers sfxes that may change
@@ -2045,7 +2046,6 @@ static void S_AL_StreamDie(int stream)
 static int              ssMusic = -1;
 static qboolean         ssPlaying[MAX_STREAMING_SOUNDS];
 static qboolean         ssKill[MAX_STREAMING_SOUNDS];
-static unsigned int     ssRestart[MAX_STREAMING_SOUNDS];
 static streamingSound_t ssData[MAX_STREAMING_SOUNDS];
 static srcHandle_t      ssSourceHandle[MAX_STREAMING_SOUNDS];
 static ALuint           ssSource[MAX_STREAMING_SOUNDS];
@@ -2122,7 +2122,6 @@ static void S_AL_CloseSSFiles(int ss)
  */
 static void S_AL_StopStreamingSound(int ss)
 {
-    ssRestart[ss] = 0;
 	if (!ssPlaying[ss])
 	{
 		return;
@@ -2634,13 +2633,6 @@ static float S_AL_StartStreamingSoundEx(const char *intro, const char *loop, int
 		ssData[ss].stream = S_CodecOpenStream(loop);
 	}
 
-    if (!ssData[ss].stream)
-    {
-        Com_Printf(S_COLOR_YELLOW "WARNING S_AL_StartStreamingSoundEx: couldn't open stream file %s\n", intro);
-        S_AL_SSSourceFree(ss);
-        return 0.0f;
-    }
-
 	// Generate the musicBuffers
 	qalGenBuffers(NUM_STREAM_BUFFERS, ssBuffers[ss]);
 
@@ -2870,12 +2862,6 @@ static void S_AL_SSUpdate(int ss)
 	if (state == AL_STOPPED && numBuffers)
 	{
 		Com_DPrintf(S_COLOR_YELLOW "Restarted OpenAL stream %d\n", ss);
-        ssRestart[ss]++;
-        if(ssRestart[ss] > 5)
-        {
-            S_AL_StopStreamingSound(ss);
-            return;
-        }
 		qalSourcePlay(ssSource[ss]);
 	}
 
@@ -3294,9 +3280,7 @@ qboolean S_AL_Init(soundInterface_t *si)
 		//streamNumBuffers[i]    = 0;
 		//streamBufIndex[i]      = 0;
 	}
-	
-	Com_Memset(ssRestart, 0, sizeof(ssRestart));
-	
+
 	// New console variables
 	s_alPrecache      = Cvar_Get("s_alPrecache", "1", CVAR_ARCHIVE);
 	s_alGain          = Cvar_Get("s_alGain", "1.0", CVAR_ARCHIVE);
@@ -3318,7 +3302,7 @@ qboolean S_AL_Init(soundInterface_t *si)
 		Com_Printf("Rejecting DLL named \"%s\"\n", s_alDriver->string);
 		return qfalse;
 	}
-
+	
 	// Load QAL
 	if (!QAL_Init(s_alDriver->string))
 	{

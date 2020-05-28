@@ -283,8 +283,8 @@ void trap_SendServerCommand(int clientNum, const char *text)
 	// so ignore them
 	if (strlen(text) > 1022)
 	{
-		G_LogPrintf("%s: trap_SendServerCommand( %d, ... ) length exceeds 1022.\n", MODNAME, clientNum);
-		G_LogPrintf("%s: text [%s.950s]... truncated\n", MODNAME, text);
+		G_LogPrintf("%s: trap_SendServerCommand( %d, ... ) length exceeds 1022.\n", GAMEVERSION, clientNum);
+		G_LogPrintf("%s: text [%s.950s]... truncated\n", GAMEVERSION, text);
 		return;
 	}
 	syscall(G_SEND_SERVER_COMMAND, clientNum, text);
@@ -580,7 +580,7 @@ sfxHandle_t trap_RegisterSound(const char *sample, qboolean compressed)
 	return syscall(G_REGISTERSOUND, sample, compressed);
 }
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 //#define FAKELAG
 #ifdef FAKELAG
 #define MAX_USERCMD_BACKUP  256

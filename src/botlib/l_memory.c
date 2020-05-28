@@ -37,7 +37,7 @@
 #include "botlib.h"
 #include "be_interface.h"
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 //  #define MEMDEBUG
 #define MEMORYMANEGER
 #endif

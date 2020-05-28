@@ -58,25 +58,6 @@ static void CG_ParseSkillRating(int version)
 }
 #endif
 
-#ifdef FEATURE_PRESTIGE
-/**
- * @brief CG_ParsePrestige
- */
-static void CG_ParsePrestige()
-{
-	int        i = 0;
-	const char *s;
-
-	s = CG_Argv(i);
-	while (*s)
-	{
-		cg.prestige[i] = (float)atof(CG_Argv(i + 1));
-		i++;
-		s = CG_Argv(i);
-	}
-}
-#endif
-
 /**
  * @brief CG_ParseScore
  * @param[in] team
@@ -134,19 +115,7 @@ static void CG_ParseScore(team_t team)
 		}
 #endif
 
-#ifdef FEATURE_PRESTIGE
-		if (cgs.prestige)
-		{
-			cg.scores[i].prestige = cg.prestige[i];
-		}
-#endif
-
 		cg.numScores++;
-
-		if (cg.intermissionStarted)
-		{
-			cgs.dbLastScoreReceived = qtrue;
-		}
 	}
 }
 
@@ -328,13 +297,13 @@ void CG_ParseSysteminfo(void)
 
 
 /**
- * @brief CG_ParseModInfo
+ * @brief CG_ParseLegacyinfo
  */
-void CG_ParseModInfo(void)
+void CG_ParseLegacyinfo(void)
 {
 	const char *info;
 
-	info = CG_ConfigString(CS_MODINFO);
+	info = CG_ConfigString(CS_LEGACYINFO);
 
 	cgs.mapVoteMapX = atoi(Info_ValueForKey(info, "X"));
 	cgs.mapVoteMapY = atoi(Info_ValueForKey(info, "Y"));
@@ -344,9 +313,6 @@ void CG_ParseModInfo(void)
 	{
 		cgs.mapProb = (float)atof(Info_ValueForKey(info, "M"));
 	}
-#endif
-#ifdef FEATURE_PRESTIGE
-	cgs.prestige = atoi(Info_ValueForKey(info, "P"));
 #endif
 
 #ifdef FEATURE_MULTIVIEW
@@ -1012,8 +978,8 @@ static void CG_ConfigStringModified(void)
 	case CS_FILTERCAMS:
 		cg.filtercams = atoi(CG_ConfigString(num)) ? qtrue : qfalse;
 		break;
-	case CS_MODINFO:
-		CG_ParseModInfo();
+	case CS_LEGACYINFO:
+		CG_ParseLegacyinfo();
 		break;
 	case CS_SYSTEMINFO:
 		CG_ParseSysteminfo();
@@ -1975,7 +1941,7 @@ const char *CG_LocalizeServerCommand(const char *buf)
 	static char token[MAX_TOKEN_CHARS];
 	char        temp[MAX_TOKEN_CHARS];
 	qboolean    togloc = qtrue;
-	const char  *s     = buf;
+	const char  *s = buf;
 	int         i, prev = 0;
 
 	Com_Memset(token, 0, sizeof(token));
@@ -2204,17 +2170,9 @@ void CG_parseWeaponStatsGS_cmd(void)
 					Q_strcat(strName, sizeof(strName), va("                "));
 				}
 
-				// syringe doesn't have kill/death stats
-				if (i == WS_SYRINGE)
-				{
-					Q_strncpyz(gs->strWS[gs->cWeapons++], va("%s", strName), sizeof(gs->strWS[0]));
-				}
-				else
-				{
-					Q_strncpyz(gs->strWS[gs->cWeapons++],
-					           va("%s%5d %6d%s", strName, nKills, nDeaths, aWeaponInfo[i].fHasHeadShots ? va(" %8d", nHeadshots) : ""),
-					           sizeof(gs->strWS[0]));
-				}
+				Q_strncpyz(gs->strWS[gs->cWeapons++],
+				           va("%s%5d %6d%s", strName, nKills, nDeaths, aWeaponInfo[i].fHasHeadShots ? va(" %8d", nHeadshots) : ""),
+				           sizeof(gs->strWS[0]));
 
 				if (nShots > 0 || nHits > 0 || nKills > 0 || nDeaths)
 				{
@@ -2265,67 +2223,25 @@ void CG_parseWeaponStatsGS_cmd(void)
 	{
 		if (skillMask & (1 << i))
 		{
-#ifdef FEATURE_PRESTIGE
-			if (cgs.prestige && cgs.gametype != GT_WOLF_CAMPAIGN && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS)
-			{
-				ci->skillpoints[i]      = atoi(CG_Argv(iArg++));
-				ci->deltaskillpoints[i] = atoi(CG_Argv(iArg++));
-				xp                     += ci->deltaskillpoints[i];
-			}
-			else
-#endif
-			{
-				ci->skillpoints[i] = atoi(CG_Argv(iArg++));
-				xp                += ci->skillpoints[i];
-			}
+			ci->skillpoints[i] = atoi(CG_Argv(iArg++));
+			xp                += ci->skillpoints[i];
 		}
 	}
 
 #ifdef FEATURE_RATING
 	if (cgs.skillRating)
 	{
-		ci->rating      = (float) atof(CG_Argv(iArg++));
-		ci->deltaRating = (float) atof(CG_Argv(iArg++));
-	}
-#endif
-#ifdef FEATURE_PRESTIGE
-	if (cgs.prestige)
-	{
-		ci->prestige = atoi(CG_Argv(iArg++));
-	}
-#endif
-
-#if defined(FEATURE_RATING) && defined(FEATURE_PRESTIGE)
-	if (cgs.skillRating && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS)
-	{
-		if (cgs.prestige && cgs.gametype != GT_WOLF_CAMPAIGN)
-		{
-			Q_strncpyz(gs->strRank, va("%-21s %-8d %-14.2f %-3i", GetRankTableData(ci->team, ci->rank)->names, xp, (double)ci->rating, ci->prestige), sizeof(gs->strRank));
-		}
-		else
-		{
-			Q_strncpyz(gs->strRank, va("%-21s %-8d %-14.2f", GetRankTableData(ci->team, ci->rank)->names, xp, (double)ci->rating), sizeof(gs->strRank));
-		}
+		ci->rating = (float)atof(CG_Argv(iArg++));
+		//ci->deltaRating = (float)atof(CG_Argv(iArg++));
+		Q_strncpyz(gs->strRank, va("%-20s %-16d %4.2f", GetRankTableData(ci->team, ci->rank)->names, xp, (double)ci->rating), sizeof(gs->strRank));
 	}
 	else
-#endif
-#ifdef FEATURE_RATING
-	if (cgs.skillRating && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS)
 	{
-		Q_strncpyz(gs->strRank, va("%-21s %-8d %-14.2f", GetRankTableData(ci->team, ci->rank)->names, xp, (double)ci->rating), sizeof(gs->strRank));
+		Q_strncpyz(gs->strRank, va("%-20s %-12d", GetRankTableData(ci->team, ci->rank)->names, xp), sizeof(gs->strRank));
 	}
-	else
+#else
+	Q_strncpyz(gs->strRank, va("%-20s %-12d", GetRankTableData(ci->team, ci->rank)->names, xp), sizeof(gs->strRank));
 #endif
-#ifdef FEATURE_PRESTIGE
-	if (cgs.prestige && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS && cgs.gametype != GT_WOLF_CAMPAIGN)
-	{
-		Q_strncpyz(gs->strRank, va("%-21s %-8d %-14i", GetRankTableData(ci->team, ci->rank)->names, xp, ci->prestige), sizeof(gs->strRank));
-	}
-	else
-#endif
-	{
-		Q_strncpyz(gs->strRank, va("%-21s %-8d", GetRankTableData(ci->team, ci->rank)->names, xp), sizeof(gs->strRank));
-	}
 
 	if (skillMask != 0)
 	{
@@ -2338,29 +2254,13 @@ void CG_parseWeaponStatsGS_cmd(void)
 				continue;
 			}
 
-#ifdef FEATURE_PRESTIGE
-			if (cgs.prestige && cgs.gametype != GT_WOLF_CAMPAIGN && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS)
+			if (ci->skill[i] < NUM_SKILL_LEVELS - 1)
 			{
-				if (ci->skill[i] < NUM_SKILL_LEVELS - 1)
-				{
-					str = va("%10d (%d/%d)", ci->deltaskillpoints[i], ci->skillpoints[i], GetSkillTableData(i)->skillLevels[ci->skill[i] + 1]);
-				}
-				else
-				{
-					str = va("%10d (%d)", ci->deltaskillpoints[i], ci->skillpoints[i]);
-				}
+				str = va("%10d/%-10d", ci->skillpoints[i], GetSkillTableData(i)->skillLevels[ci->skill[i] + 1]);
 			}
 			else
-#endif
 			{
-				if (ci->skill[i] < NUM_SKILL_LEVELS - 1)
-				{
-					str = va("%10d/%-10d", ci->skillpoints[i], GetSkillTableData(i)->skillLevels[ci->skill[i] + 1]);
-				}
-				else
-				{
-					str = va("%10d", ci->skillpoints[i]);
-				}
+				str = va("%10d", ci->skillpoints[i]);
 			}
 
 			if (cgs.gametype == GT_WOLF_CAMPAIGN)
@@ -2378,7 +2278,7 @@ void CG_parseWeaponStatsGS_cmd(void)
 /**
  * @brief Client-side stat presentation
  */
-void CG_parseWeaponStats_cmd(void (txt_dump) (const char *))
+void CG_parseWeaponStats_cmd(void(txt_dump) (const char *))
 {
 	clientInfo_t *ci;
 	qboolean     fFull;
@@ -2479,12 +2379,7 @@ void CG_parseWeaponStats_cmd(void (txt_dump) (const char *))
 					}
 				}
 
-				// syringe doesn't have kill/death stats
-				if (i == WS_SYRINGE)
-				{
-					txt_dump(va("%s\n", strName));
-				}
-				else if (fFull)
+				if (fFull)
 				{
 					txt_dump(va("%s^2%5d ^1%6d%s\n", strName, kills, deaths, aWeaponInfo[i].fHasHeadShots ? va(" ^3%9d", headshots) : ""));
 				}
@@ -2543,26 +2438,15 @@ void CG_parseWeaponStats_cmd(void (txt_dump) (const char *))
 	{
 		if (dwSkillPointMask & (1 << i))
 		{
-#ifdef FEATURE_PRESTIGE
-			if (cgs.prestige && cgs.gametype != GT_WOLF_CAMPAIGN && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS)
-			{
-				ci->skillpoints[i]      = atoi(CG_Argv(iArg++));
-				ci->deltaskillpoints[i] = atoi(CG_Argv(iArg++));
-				xp                     += ci->skillpoints[i];
-			}
-			else
-#endif
-			{
-				ci->skillpoints[i] = atoi(CG_Argv(iArg++));
-				xp                += ci->skillpoints[i];
-			}
+			ci->skillpoints[i] = atoi(CG_Argv(iArg++));
+			xp                += ci->skillpoints[i];
 		}
 	}
 
 	txt_dump(va("^2Rank: ^7%s (%d XP)\n", GetRankTableData(ci->team, ci->rank)->names, xp));
 
 #ifdef FEATURE_RATING
-	if (cgs.skillRating && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS)
+	if (cgs.skillRating)
 	{
 		float rating;
 		float deltaRating;
@@ -2572,17 +2456,6 @@ void CG_parseWeaponStats_cmd(void (txt_dump) (const char *))
 		deltaRating = atof(CG_Argv(iArg++));
 
 		txt_dump(va("^2Skill Rating: ^7%5.2f   (^5%+5.2f^7)\n", rating, deltaRating));
-	}
-#endif
-
-#ifdef FEATURE_PRESTIGE
-	if (cgs.prestige && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS && cgs.gametype != GT_WOLF_CAMPAIGN)
-	{
-		int prestige;
-
-		prestige = atoi(CG_Argv(iArg++));
-
-		txt_dump(va("^2Prestige: ^7%i\n", prestige));
 	}
 #endif
 
@@ -2647,7 +2520,7 @@ void CG_parseWeaponStats_cmd(void (txt_dump) (const char *))
  * @brief CG_parseBestShotsStats_cmd
  * @param[in] doTop
  */
-static void CG_parseBestShotsStats_cmd(qboolean doTop, void (txt_dump) (const char *))
+static void CG_parseBestShotsStats_cmd(qboolean doTop, void(txt_dump) (const char *))
 {
 	int      iArg = 1;
 	qboolean fFull;
@@ -2725,7 +2598,7 @@ static void CG_parseBestShotsStats_cmd(qboolean doTop, void (txt_dump) (const ch
  * @brief CG_parseTopShotsStats_cmd
  * @param[in] doTop
  */
-static void CG_parseTopShotsStats_cmd(qboolean doTop, void (txt_dump) (const char *))
+static void CG_parseTopShotsStats_cmd(qboolean doTop, void(txt_dump) (const char *))
 {
 	int i, iArg = 1;
 	int cClients;
@@ -2931,15 +2804,12 @@ void CG_dumpStats(void)
 #define IMSR_HASH           53398
 #define SR_HASH             27365
 #define SRA_HASH            39102
-#define IMPR_HASH           53035
-#define PR_HASH             27008
 #define MU_START_HASH       107698
 #define MU_PLAY_HASH        92607
 #define MU_STOP_HASH        94568
 #define MU_FADE_HASH        87906
 #define SND_FADE_HASH       100375
 #define ROCKANDROLL_HASH    146207
-#define BP_HASH             25102
 // -----------
 
 /**
@@ -3428,20 +3298,6 @@ static void CG_ServerCommand(void)
 		}
 		return;
 #endif
-#ifdef FEATURE_PRESTIGE
-	case IMPR_HASH:                                        // "impr"
-		if (cgs.prestige)
-		{
-			CG_Debriefing_ParsePrestige();
-		}
-		return;
-	case PR_HASH:                                          // "pr"
-		if (cgs.prestige)
-		{
-			CG_ParsePrestige();
-		}
-		return;
-#endif
 	// music
 	// loops \/
 	case MU_START_HASH:                                      // "mu_start" has optional parameter for fade-up time
@@ -3497,10 +3353,6 @@ static void CG_ServerCommand(void)
 	case ROCKANDROLL_HASH: // "rockandroll"
 		trap_S_FadeAllSound(1.0f, 1000, qfalse);      // fade sound up
 		return;
-	case BP_HASH: // "bp"
-		CG_WordWrapString(CG_Argv(1), Com_Clamp(50, 80, (int)(cgs.screenXScale * 40.f)), cg.bannerPrint, sizeof(cg.bannerPrint));
-		cg.bannerPrintTime = cg.time;
-		break;
 	default:
 		CG_Printf("Unknown client game command: %s [%lu]\n", cmd, BG_StringHashValue(cmd));
 		break;

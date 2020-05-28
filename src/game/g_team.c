@@ -192,31 +192,31 @@ void Team_ResetFlag(gentity_t *ent)
 		if (ent->s.density == 1)
 		{
 			RespawnItem(ent);
-		}
+
+			// unset objective indicator
+			switch (ent->item->giPowerUp == PW_REDFLAG ? TEAM_AXIS : TEAM_ALLIES)
+			{
+			case TEAM_AXIS:
+				if (!level.redFlagCounter)
+				{
+					level.flagIndicator &= ~(1 << PW_REDFLAG);
+				}
+				break;
+			case TEAM_ALLIES:
+				if (!level.blueFlagCounter)
+				{
+					level.flagIndicator &= ~(1 << PW_BLUEFLAG);
+				}
+				break;
+			default:
+				break;
+			}
+			G_globalFlagIndicator();
 
 #ifdef FEATURE_OMNIBOT
-		Bot_Util_SendTrigger(ent, NULL, va("Flag returned %s!", _GetEntityName(ent)), "returned");
+			Bot_Util_SendTrigger(ent, NULL, va("Flag returned %s!", _GetEntityName(ent)), "returned");
 #endif
-
-		// unset objective indicator
-		switch (ent->item->giPowerUp == PW_REDFLAG ? TEAM_AXIS : TEAM_ALLIES)
-		{
-		case TEAM_AXIS:
-			if (!level.redFlagCounter)
-			{
-				level.flagIndicator &= ~(1 << PW_REDFLAG);
-			}
-			break;
-		case TEAM_ALLIES:
-			if (!level.blueFlagCounter)
-			{
-				level.flagIndicator &= ~(1 << PW_BLUEFLAG);
-			}
-			break;
-		default:
-			break;
 		}
-		G_globalFlagIndicator();
 	}
 }
 
@@ -487,8 +487,6 @@ int Pickup_Team(gentity_t *ent, gentity_t *other)
 		return 0;
 	}
 
-	trap_SendServerCommand(other - g_entities, "cp \"You picked up the objective!\"");
-
 	// set timer
 	cl->pickObjectiveTime = level.time;
 
@@ -496,7 +494,9 @@ int Pickup_Team(gentity_t *ent, gentity_t *other)
 	other->message           = ent->message;
 	other->s.otherEntityNum2 = ent->s.modelindex2;
 
-	return ((team == cl->sess.sessionTeam) ? Team_TouchOurFlag : Team_TouchEnemyFlag)(ent, other, team);
+	return ((team == cl->sess.sessionTeam) ?
+	        Team_TouchOurFlag : Team_TouchEnemyFlag)
+	           (ent, other, team);
 }
 
 /**
@@ -1884,7 +1884,7 @@ qboolean G_readyMatchState(void)
 		{
 			AP("cp \"^1COUNTDOWN STOPPED!^7  Back to warmup...\n\"");
 		}
-		level.lastRestartTime = level.time;
+		level.lastRestartTime = (qboolean)(level.time);
 		trap_SendConsoleCommand(EXEC_APPEND, va("map_restart 0 %i\n", GS_WARMUP));
 	}
 

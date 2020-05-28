@@ -39,7 +39,6 @@
 
 #ifndef DEDICATED
 #include "../sys/sys_local.h"
-#include "../client/client.h"
 #endif
 #include "../server/server.h"
 
@@ -127,12 +126,18 @@ cvar_t *com_altivec;
 #endif
 cvar_t *cl_paused;
 cvar_t *sv_paused;
+cvar_t *cl_packetdelay;
+cvar_t *sv_packetdelay;
 
 cvar_t *com_motd;
 cvar_t *com_motdString;
 cvar_t *com_updateavailable;
 cvar_t *com_updatemessage;
 cvar_t *com_updatefiles;
+
+#if !defined(DEDICATED)
+extern cvar_t *cl_slashCommand;
+#endif
 
 #if idx64
 int (*Q_VMftol)(void); // Unused in ET:L. Used in ioquake’s VM code
@@ -152,6 +157,10 @@ cvar_t *com_watchdog_cmd;
 cvar_t *com_hunkused;
 
 cvar_t *com_downloadURL;
+#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
+cvar_t *dl_whitelistModPaks;
+cvar_t *dl_whitelistMapPaks;
+#endif
 
 // com_speeds times
 int time_game;
@@ -221,22 +230,12 @@ void Com_EndRedirect(void)
 void QDECL Com_Printf(const char *fmt, ...)
 {
 	va_list         argptr;
-	char            buffer[MAXPRINTMSG];
-	char            *msg;
+	char            msg[MAXPRINTMSG];
 	static qboolean opening_qconsole = qfalse;
-	int             timestamp;
-
-#ifdef DEDICATED
-	timestamp = svs.time;
-#else
-	timestamp = cl.snap.serverTime;
-#endif
-
-	// add server timestamp in dedicated console and log
-	msg = buffer + Com_sprintf(buffer, sizeof(buffer), "%8i ", timestamp);
+	int             l;
 
 	va_start(argptr, fmt);
-	Q_vsnprintf(msg, sizeof(buffer), fmt, argptr);
+	Q_vsnprintf(msg, sizeof(msg), fmt, argptr);
 	va_end(argptr);
 
 	if (rd_buffer)
@@ -258,7 +257,14 @@ void QDECL Com_Printf(const char *fmt, ...)
 	CL_ConsolePrint(msg);
 #endif
 
-	msg = buffer;
+	// add server timestamp in dedicated console and log
+	Com_sprintf(msg, sizeof(msg), "%8i ", svs.time);
+
+	l = strlen(msg);
+
+	va_start(argptr, fmt);
+	Q_vsnprintf(msg + l, sizeof(msg) - l, fmt, argptr);
+	va_end(argptr);
 
 	// echo to dedicated console and early console
 	Sys_Print(msg);
@@ -991,7 +997,7 @@ static void Z_ClearZone(memzone_t *zone, int size)
 	// set the entire zone to one free block
 
 	zone->blocklist.next = zone->blocklist.prev = block =
-													  ( memblock_t * )((byte *)zone + sizeof(memzone_t));
+		( memblock_t * )((byte *)zone + sizeof(memzone_t));
 	zone->blocklist.tag  = 1;   // in use block
 	zone->blocklist.id   = 0;
 	zone->blocklist.size = 0;
@@ -2642,8 +2648,24 @@ static void Com_Crash_f(void)
  */
 void Com_SetRecommended()
 {
-	Cbuf_AddText("exec preset_high.cfg\n");
-	Cvar_Set("com_recommended", "0");
+	cvar_t   *r_highQualityVideo;
+	qboolean goodVideo;
+	// will use this for recommended settings as well.. do i outside the lower check so it gets done even with command line stuff
+	r_highQualityVideo = Cvar_Get("r_highQualityVideo", "1", CVAR_ARCHIVE);
+	goodVideo          = (r_highQualityVideo && r_highQualityVideo->integer);
+
+	if (goodVideo)
+	{
+		Com_Printf("Found high quality video and fast CPU\n");
+		Cbuf_AddText("exec preset_high.cfg\n");
+		Cvar_Set("com_recommended", "0");
+	}
+	else
+	{
+		Com_Printf("Found low quality video and fast CPU\n");
+		Cbuf_AddText("exec preset_normal.cfg\n");
+		Cvar_Set("com_recommended", "1");
+	}
 }
 
 /**
@@ -2855,7 +2877,7 @@ void Com_Init(char *commandLine)
 			// check existing pid file and make sure it's ok
 			if (!Com_CheckProfile())
 			{
-#if !defined(DEDICATED) && !defined(ETLEGACY_DEBUG)
+#if !defined(DEDICATED) && !defined(LEGACY_DEBUG)
 				test = Sys_Dialog(DT_YES_NO, "ET:L crashed last time it was running. Do you want to reset settings to default values?\n\nNote:\nIf you are running several client instances ensure a different value\nof CVAR fs_homepath is set for each client.\nOtherwise the same profile path is used which may cause other side effects.", "Reset settings") == DR_YES;
 #else
 				test = qfalse;
@@ -2986,6 +3008,11 @@ void Com_Init(char *commandLine)
 	com_downloadURL = Cvar_Get("com_downloadURL", "http://mirror.etlegacy.com/etmain", CVAR_INIT);
 	Cmd_AddCommand("download", Com_Download_f, "Downloads a pk3 from the URL set in cvar com_downloadURL.");
 
+#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
+	dl_whitelistModPaks = Cvar_Get("dl_whitelistModPaks", "0", CVAR_ARCHIVE);
+	dl_whitelistMapPaks = Cvar_Get("dl_whitelistMapPaks", "1", CVAR_ARCHIVE);
+#endif
+
 #ifdef FEATURE_DBMS
 	Cmd_AddCommand("saveDB", DB_SaveMemDB_f, "Saves the internal memory database to disk.");
 	if (com_developer->integer)
@@ -2994,7 +3021,7 @@ void Com_Init(char *commandLine)
 	}
 #endif
 
-	com_version = Cvar_Get("version", ET_VERSION, CVAR_ROM | CVAR_SERVERINFO);
+	com_version = Cvar_Get("version", FAKE_VERSION, CVAR_ROM | CVAR_SERVERINFO);
 
 	com_motd       = Cvar_Get("com_motd", "1", 0);
 	com_motdString = Cvar_Get("com_motdString", "", CVAR_ROM);
@@ -3803,42 +3830,48 @@ void Field_CompleteCommand(char *cmd, qboolean doCommands, qboolean doCvars)
 		//completionString = Cmd_Argv(completionArgument - 1);
 	}
 
-#if defined(SLASH_COMMAND) && !defined(DEDICATED)
-	// Unconditionally add a '\' to the start of the buffer
-	if (completionField->buffer[0] &&
-	    completionField->buffer[0] != '\\')
+#if !defined(DEDICATED)
+	if (SLASH_COMMAND)
 	{
-		if (completionField->buffer[0] != '/')
+		// Unconditionally add a '\' to the start of the buffer
+		if (completionField->buffer[0] &&
+			completionField->buffer[0] != '\\')
 		{
-			// Buffer is full, refuse to complete
-			if (strlen(completionField->buffer) + 1 >=
-			    sizeof(completionField->buffer))
+			if (completionField->buffer[0] != '/')
 			{
-				return;
+				// Buffer is full, refuse to complete
+				if (strlen(completionField->buffer) + 1 >=
+					sizeof(completionField->buffer))
+				{
+					return;
+				}
+
+				memmove(&completionField->buffer[1],
+						&completionField->buffer[0],
+						strlen(completionField->buffer) + 1);
+				completionField->cursor++;
 			}
 
-			memmove(&completionField->buffer[1],
-			        &completionField->buffer[0],
-			        strlen(completionField->buffer) + 1);
-			completionField->cursor++;
+			completionField->buffer[0] = '\\';
 		}
-
-		completionField->buffer[0] = '\\';
 	}
-#endif // SLASH_COMMAND
+#endif // !defined(DEDICATED)
 
 	if (completionArgument > 1)
 	{
 		const char *baseCmd = Cmd_Argv(0);
 		char       *p;
 
-#if defined(SLASH_COMMAND) && !defined(DEDICATED)
-		// This should always be true
-		if (baseCmd[0] == '\\' || baseCmd[0] == '/')
+#if !defined(DEDICATED)
+		if (SLASH_COMMAND)
 		{
-			baseCmd++;
+		// This should always be true
+			if (baseCmd[0] == '\\' || baseCmd[0] == '/')
+			{
+				baseCmd++;
+			}
 		}
-#endif // SLASH_COMMAND
+#endif // !defined(DEDICATED)
 
 		if ((p = Field_FindFirstSeparator(cmd)))
 		{
@@ -3851,13 +3884,13 @@ void Field_CompleteCommand(char *cmd, qboolean doCommands, qboolean doCvars)
 	}
 	else
 	{
-#if SLASH_COMMAND
+//#if SLASH_COMMAND
 		if (completionString[0] == '\\' || completionString[0] == '/')
 		{
 			memmove(completionString, completionString + 1, sizeof(completionString) - 1);
 			//completionString++;
 		}
-#endif
+//#endif
 
 		matchCount       = 0;
 		shortestMatch[0] = 0;
@@ -4001,12 +4034,20 @@ void Console_AutoComplete(field_t *field, int *completionOffset)
 			return;
 		}
 
-		lastSpace = Field_LastWhiteSpace(field);
-		if (lastSpace < 0)
+#if !defined(DEDICATED)
+		if (SLASH_COMMAND)
 		{
-			return;
+			lastSpace = Field_LastWhiteSpace(field);
+			if (lastSpace < 0)
+			{
+				return;
+			}
 		}
-
+		else
+#endif
+		{
+			lastSpace = -1;
+		}
 		Com_sprintf(field->buffer + lastSpace + 1, sizeof(field->buffer) - lastSpace - 1, "%s", shortestMatch);
 		*completionOffset = field->cursor = strlen(field->buffer);
 	}
@@ -4020,22 +4061,35 @@ void Console_AutoComplete(field_t *field, int *completionOffset)
 		}
 		findMatchIndex = 0;
 
-#if SLASH_COMMAND
-		if (completionString[0] == '\\' || completionString[0] == '/')
+#if !defined(DEDICATED)
+		if (SLASH_COMMAND)
 		{
-			memmove(completionString, completionString + 1, sizeof(completionString) - 1);
+			if (completionString[0] == '\\' || completionString[0] == '/')
+			{
+				memmove(completionString, completionString + 1, sizeof(completionString) - 1);
+			}
 		}
-#endif // SLASH_COMMAND
+#endif
 
 		Cmd_CommandCompletion(FindIndexMatch);
 		Cvar_CommandCompletion(FindIndexMatch);
 
-		lastSpace = Field_LastWhiteSpace(field);
-		if (lastSpace < 0)
+#if !defined(DEDICATED)
+		if (SLASH_COMMAND)
 		{
-			*completionOffset = 0;
-			return;
+			lastSpace = Field_LastWhiteSpace(field);
+			if (lastSpace < 0)
+			{
+				*completionOffset = 0;
+				return;
+			}
 		}
+		else
+#else
+		{
+		lastSpace = -1;
+		}
+#endif
 
 		Com_sprintf(field->buffer + lastSpace + 1, sizeof(field->buffer) - lastSpace - 1, "%s", shortestMatch);
 		field->cursor = strlen(field->buffer);
@@ -4081,11 +4135,6 @@ void Com_RandomBytes(byte *string, int len)
 	}
 }
 
-/**
- * @brief Com_ParseUA
- * @param[in,out] ua
- * @param[in] string
- */
 void Com_ParseUA(userAgent_t *ua, const char *string)
 {
 	if (!string)
@@ -4093,7 +4142,7 @@ void Com_ParseUA(userAgent_t *ua, const char *string)
 		return;
 	}
 	// store any full et version string
-	Q_strncpyz(ua->string, string, sizeof(ua->string));
+	strncpy(ua->string, string, sizeof(ua->string));
 	// check for compatibility (only accept of own kind)
 	if (!Q_strncmp(string, PRODUCT_LABEL, strlen(PRODUCT_LABEL)))
 	{

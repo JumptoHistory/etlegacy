@@ -238,9 +238,9 @@ int needsOSXQuarantineFix()
 		}
 		else
 		{
-			NSMutableString *errortext = [NSMutableString stringWithString: @"Running ET: Legacy with enabled App Translocation isn't possible. Please remove the quarantine flag by using the following command in the terminal and restart the game:\r\n\r\nxattr -cr "];
+			NSMutableString *errortext = [NSMutableString stringWithString: @"Running ET Legacy with enabled App Translocation isn't possible. Please remove the quarantine flag by using the following command in the terminal and restart the game:\r\n\r\nxattr -cr "];
 			[errortext appendString:tempPath];
-			[errortext appendString:@"\r\n\r\nFor more information please go to:\r\n\r\nhttps://github.com/etlegacy/etlegacy/wiki/Mac-OS-X"];
+			[errortext appendString:@"\r\n\r\nFor more information please go to:\r\n\r\nhttps://dev.etlegacy.com/projects/etlegacy/wiki/Mac_OS_X"];
 			Sys_Dialog(DT_ERROR, [errortext UTF8String], "App Translocation detected");
 			return 4;
 		}

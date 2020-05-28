@@ -1348,6 +1348,72 @@ typedef struct
 	int msec;               ///< total msec for backend run
 } backEndCounters_t;
 
+#define MAX_SUPERSAMPLE_SAMPLES 16
+#define RESOLUTION_SCALE_WEIGHT_BUFFER_LENGTH 16384
+
+/**
+* @enum programObject_t
+" @brief
+*/
+enum
+{
+	PO_RESOLUTION_SCALE_MINIFY,
+	PO_RESOLUTION_SCALE_LANCZOS2,
+	PO_RESOLUTION_SCALE_LANCZOS2_5,
+	PO_RESOLUTION_SCALE_LANCZOS3,
+	PO_RESOLUTION_SCALE_BICUBIC,
+	PO_RESOLUTION_SCALE_CALC_WEIGHTS,
+	PO_RESOLUTION_SCALE_REF_WEIGHT_BUFFER,
+	PO_RESOLUTION_SCALE_PRE_CALC_WEIGHTS,
+	PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS,
+	PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS_MULTI_PATTERN,
+	PO_RESOLUTION_SCALE_REF_PRE_CALCED_WEIGHTS_SUPERSAMPLE_RESOLVE,
+	PO_MINIFY_AVERAGE,
+	PO_FXAA,
+	PO_SUPERSAMPLE_RESOLVE,
+	PO_NUM_PROGRAM_OBJECTS
+};
+
+typedef int ivec2_t[2];
+
+#define MAX_SCALING_SAMPLE_PATTERNS 3
+#define MAX_SCALING_SUPERSAMPLE_SAMPLES 8
+typedef struct
+{
+	float buffer[784];
+	int indexes[MAX_SCALING_SAMPLE_PATTERNS][MAX_SCALING_SAMPLE_PATTERNS];
+	ivec2_t counter[MAX_SCALING_SAMPLE_PATTERNS][MAX_SCALING_SAMPLE_PATTERNS][MAX_SCALING_SUPERSAMPLE_SAMPLES];
+	vec2_t FirstPos[MAX_SCALING_SAMPLE_PATTERNS][MAX_SCALING_SAMPLE_PATTERNS][MAX_SCALING_SUPERSAMPLE_SAMPLES];
+#if USE_WEIGHT_BUFFER_TEXTURE
+	GLuint bufferTexture;
+#endif
+} weightBuffer_t;
+
+typedef struct
+{
+	GLuint resScaleProgramObjects[PO_NUM_PROGRAM_OBJECTS];
+	GLuint resScaleFramebuffers[4];
+	GLuint resScaleTextures[3];
+	GLuint resScaleDepthBuffer;
+	GLuint resScaleColorBuffers[3];
+	GLuint resScaleFramebuffersMultisample[2];
+	GLuint resScaleDepthBufferMultisample;
+	GLuint resScaleColorBufferMultisample;
+	GLuint resScaleTexturesMultisample[2];
+	GLuint resScaleDepthTexturesMultisample[2];
+	GLuint resScaleWeightBufferObjects[2];
+	//float resScaleWeights[576];
+	weightBuffer_t resScaleWeights;
+	qboolean resScaleWeightsCalculated;
+	GLuint windowSizeTexture;
+	GLuint windowSizeFramebuffer;
+	GLuint supersampleTextures[MAX_SUPERSAMPLE_SAMPLES];
+	GLuint supersampleFramebuffers[MAX_SUPERSAMPLE_SAMPLES];
+	float supersampleWeights[16][MAX_SUPERSAMPLE_SAMPLES * 36];
+	vec2_t supersampleOffsets[16][MAX_SUPERSAMPLE_SAMPLES];
+	vec2_t supersampleJittersInPixel[16][MAX_SUPERSAMPLE_SAMPLES];
+} backEndObjects_t;
+
 /**
  * @struct backEndState_t
  * @brief all state modified by the back end is seperated
@@ -1367,15 +1433,18 @@ typedef struct
 	byte color2D[4];
 	qboolean vertexes2D;            ///< shader needs to be finished
 	trRefEntity_t entity2D;         ///< currentEntity will point at this when doing 2D rendering
+
+	float textureLodBias;
+	backEndObjects_t objects;
 } backEndState_t;
 
 /**
- * @struct trGlobals_t
- * @brief Most renderer globals are defined here.
- * backend functions should never modify any of these fields,
- * but may read fields that aren't dynamically modified
- * by the frontend.
- */
+* @struct trGlobals_t
+* @brief Most renderer globals are defined here.
+* backend functions should never modify any of these fields,
+* but may read fields that aren't dynamically modified
+* by the frontend.
+*/
 typedef struct
 {
 	qboolean registered;                        ///< cleared at shutdown, set at beginRegistration
@@ -1443,8 +1512,8 @@ typedef struct
 	frontEndCounters_t pc;
 	int frontEndMsec;                           ///< not in pc due to clearing issue
 
-	// put large tables at the end, so most elements will be
-	// within the +/32K indexed range on risc processors
+												// put large tables at the end, so most elements will be
+												// within the +/32K indexed range on risc processors
 	model_t *models[MAX_MOD_KNOWN];
 	int numModels;
 
@@ -1452,9 +1521,9 @@ typedef struct
 	image_t *images[MAX_DRAWIMAGES];
 	int numCacheImages;                         ///< Unused.
 
-	// shader indexes from other modules will be looked up in tr.shaders[]
-	// shader indexes from drawsurfs will be looked up in sortedShaders[]
-	// lower indexed sortedShaders must be rendered first (opaque surfaces before translucent)
+												// shader indexes from other modules will be looked up in tr.shaders[]
+												// shader indexes from drawsurfs will be looked up in sortedShaders[]
+												// lower indexed sortedShaders must be rendered first (opaque surfaces before translucent)
 	int numShaders;
 	shader_t *shaders[MAX_SHADERS];
 	shader_t *sortedShaders[MAX_SHADERS];
@@ -1474,6 +1543,7 @@ typedef struct
 extern backEndState_t backEnd;
 extern trGlobals_t    tr;
 extern glconfig_t     glConfig;     ///< outside of TR since it shouldn't be cleared during ref re-init
+extern glconfigExt_t  glConfigExt;
 extern glstate_t      glState;      ///< outside of TR since it shouldn't be cleared during ref re-init
 
 //====================================================================
@@ -1539,16 +1609,32 @@ void GL_Cull(int cullType);
 #define GLS_DSTBLEND_BITS                       0x000000f0
 
 #define GLS_DEPTHMASK_TRUE                      0x00000100
+#define GLS_DEPTHMASK_ATEST_GT_0                0x00000200
+#define GLS_DEPTHMASK_ATEST_GE_16               0x00000400
+#define GLS_DEPTHMASK_ATEST_GE_32               0x00000800
+#define GLS_DEPTHMASK_ATEST_GE_64               0x00001000
+#define GLS_DEPTHMASK_ATEST_GE_128              0x00002000
+#define GLS_DEPTHMASK_ATEST_GE_192              0x00004000
+#define GLS_DEPTHMASK_ATEST_GE_224              0x00008000
+#define GLS_DEPTHMASK_ATEST_BITS                (GLS_DEPTHMASK_ATEST_GT_0 | GLS_DEPTHMASK_ATEST_GE_16 | GLS_DEPTHMASK_ATEST_GE_32 | GLS_DEPTHMASK_ATEST_GE_64 | GLS_DEPTHMASK_ATEST_GE_128 | GLS_DEPTHMASK_ATEST_GE_192 | GLS_DEPTHMASK_ATEST_GE_224)
 
-#define GLS_POLYMODE_LINE                       0x00001000
+#define GLS_POLYMODE_LINE                       0x00010000
 
-#define GLS_DEPTHTEST_DISABLE                   0x00010000
-#define GLS_DEPTHFUNC_EQUAL                     0x00020000
+#define GLS_DEPTHTEST_DISABLE                   0x00020000
+#define GLS_DEPTHFUNC_EQUAL                     0x00040000
 
-#define GLS_ATEST_GT_0                          0x10000000
-#define GLS_ATEST_LT_80                         0x20000000
-#define GLS_ATEST_GE_80                         0x40000000
-#define GLS_ATEST_BITS                          0x70000000
+#define GLS_ATEST_GT_0                          0x00100000
+#define GLS_ATEST_LT_16                         0x00200000
+#define GLS_ATEST_GE_16                         0x00400000
+#define GLS_ATEST_LT_32                         0x00800000
+#define GLS_ATEST_GE_32                         0x01000000
+#define GLS_ATEST_LT_64                         0x02000000
+#define GLS_ATEST_GE_64                         0x04000000
+#define GLS_ATEST_LT_128                        0x08000000
+#define GLS_ATEST_GE_128                        0x10000000
+#define GLS_ATEST_GE_192                        0x40000000
+#define GLS_ATEST_GE_224                        0x80000000
+#define GLS_ATEST_BITS                          (GLS_ATEST_GT_0 | GLS_ATEST_LT_16 | GLS_ATEST_GE_16 | GLS_ATEST_LT_32 | GLS_ATEST_GE_32 | GLS_ATEST_LT_64 | GLS_ATEST_GE_64 | GLS_ATEST_LT_128 | GLS_ATEST_GE_128 | GLS_ATEST_GE_192 | GLS_ATEST_GE_224)
 
 #define GLS_DEFAULT         GLS_DEPTHMASK_TRUE
 
@@ -2277,5 +2363,27 @@ extern cvar_t *r_bonesDebug;
 extern cvar_t *r_wolfFog;
 
 extern cvar_t *r_gfxInfo;
+
+extern cvar_t *r_supersample;
+extern cvar_t *r_supersampleMultiframe;
+extern cvar_t *r_supersampleSmoothness;
+extern cvar_t *r_supersampleMode;
+extern cvar_t *r_supersampleLodFix;
+extern cvar_t *r_ignoreNoMipmaps;
+//extern cvar_t *r_generateMipMaps;
+extern cvar_t *r_resolutionScale;
+extern cvar_t *r_resolutionScaleLodFix;
+extern cvar_t *r_highQualityScaling;
+extern cvar_t *r_highQualityScalingMode;
+extern cvar_t *r_scalingSampleRadius;
+extern cvar_t *r_scalingSampleRadiusMultiplier;
+extern cvar_t *r_fboMultisample;
+extern cvar_t *r_fboFxaa;
+extern cvar_t *r_priorityShaderFileNames;
+extern cvar_t *r_customShaderFiles;
+extern cvar_t *r_transparencyAlphaBlend;
+
+extern cvar_t *r_extGenerateMipmap;
+extern cvar_t *r_extTextureNonPowerOfTwo;
 
 #endif //TR_LOCAL_H

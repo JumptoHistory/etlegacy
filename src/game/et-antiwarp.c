@@ -308,7 +308,7 @@ drop_packet:
 		    );
 	}
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 	// debug; size is added lag (amount above player's network lag)
 	// rotation is time
 	if ((g_antiwarp.integer & 16) && ent->client->cmdcount)

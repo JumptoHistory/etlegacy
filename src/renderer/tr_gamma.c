@@ -140,8 +140,11 @@ void R_ScreenGamma(void)
 	{
 		glUseProgramObjectARB(gammaProgram.program);
 
-		qglActiveTextureARB(GL_TEXTURE0_ARB);
-		qglClientActiveTextureARB(GL_TEXTURE0_ARB);
+		if (qglActiveTextureARB)
+		{
+			qglActiveTextureARB(GL_TEXTURE0_ARB);
+			qglClientActiveTextureARB(GL_TEXTURE0_ARB);
+		}
 
 		GL_Bind(screenImage);
 		// We will copy the current buffer into the screenImage

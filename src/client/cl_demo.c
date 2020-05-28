@@ -34,7 +34,7 @@
 
 #include "client.h"
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 #define DEMODEBUG(msg, ...) if (Cvar_VariableIntegerValue("demo_debug")) { Com_Printf("^1%s()^2: DEBUG " msg, __FUNCTION__, ## __VA_ARGS__); }
 #define Com_FuncDPrinf(msg, ...) Com_DPrintf("%s(): " msg, __FUNCTION__, ## __VA_ARGS__)
 #define Com_FuncPrinf(msg, ...) Com_Printf("%s(): " msg, __FUNCTION__, ## __VA_ARGS__)
@@ -462,9 +462,9 @@ static void CL_RewindDemo(double wantedTime)
 	int             i;
 	rewindBackups_t *rb;
 
-	if (!IS_DEFAULT_MOD)
+	if (!IS_LEGACY_MOD)
 	{
-		Com_FuncPrinf("Rewind is only supported on %s mod, sorry\n", DEFAULT_MODGAME);
+		Com_FuncPrinf("Rewind is only supported on legacy mod, sorry\n");
 		return;
 	}
 
@@ -1399,8 +1399,6 @@ void CL_PlayDemo_f(void)
 
 	CL_Disconnect(qtrue);
 
-	Cvar_Set("cl_autorecord", "0");
-
 	// open the demo file
 	arg = Cmd_Argv(1);
 	// check for an extension .DEMOEXT_?? (?? is protocol)
@@ -1752,9 +1750,9 @@ void CL_PauseDemo_f(void)
 		return;
 	}
 
-	if (!IS_DEFAULT_MOD)
+	if (!IS_LEGACY_MOD)
 	{
-		Com_FuncPrinf("Demo pausing is only supported on %s mod, sorry\n", DEFAULT_MODGAME);
+		Com_FuncPrinf("Demo pausing is only supported on legacy mod, sorry\n");
 		return;
 	}
 

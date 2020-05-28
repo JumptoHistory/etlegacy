@@ -380,7 +380,7 @@ void G_players_cmd(gentity_t *ent, unsigned int dwCommand, qboolean fDump)
 	int       user_rate, user_snaps;
 	gclient_t *cl;
 	gentity_t *cl_ent;
-	char      guid[MAX_GUID_LENGTH + 1], n2[MAX_NETNAME], ready[16], ref[8], rate[32], version[64];
+	char      guid[MAX_GUID_LENGTH + 1], n2[MAX_NETNAME], ready[16], ref[8], rate[32], version[32];
 	char      *s, *tc, *spec, *ign, *muted, *special, userinfo[MAX_INFO_STRING], *user_version;
 
 	if (g_gamestate.integer == GS_PLAYING)
@@ -465,14 +465,7 @@ void G_players_cmd(gentity_t *ent, unsigned int dwCommand, qboolean fDump)
 		else
 		{
 			trap_GetUserinfo(idnum, userinfo, sizeof(userinfo));
-
-			user_version = Info_ValueForKey(userinfo, "etVersion");
-
-			// no engine version found, check cgame version as a fallback
-			if (user_version[0] == 0)
-			{
-				user_version = Info_ValueForKey(userinfo, "cg_etVersion");
-			}
+			user_version = Info_ValueForKey(userinfo, "cg_etVersion");
 
 			Q_strncpyz(version, user_version, sizeof(version));
 		}
@@ -537,14 +530,7 @@ void G_players_cmd(gentity_t *ent, unsigned int dwCommand, qboolean fDump)
 			muted = "";
 		}
 
-		if (cl->pers.connected == CON_CONNECTING)
-		{
-			special = va("%s", "                 ");
-		}
-		else
-		{
-			special = va("%s%s%s%s", ref, spec, ign, muted);
-		}
+		special = va("%s%s%s%s", ref, spec, ign, muted);
 
 		tc = (ent) ? "^7 " : " ";
 		if (g_gametype.integer >= GT_WOLF)
@@ -1222,7 +1208,6 @@ const unsigned int cQualifyingShots[WS_MAX] =
 	30,     // 24 WS_GARAND
 	30,     // 25 WS_K43
 	30,     // 26 WS_MP34
-	5,      // 27 WS_SYRINGE
 };
 
 /**

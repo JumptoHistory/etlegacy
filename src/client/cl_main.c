@@ -117,6 +117,12 @@ cvar_t *cl_packetdelay;
 
 cvar_t *cl_consoleKeys;
 
+// Custom
+cvar_t	*cl_mapConfigDirectory;
+cvar_t	*cl_promptColor;
+cvar_t	*cl_consoleAlpha;
+cvar_t	*cl_consoleRGB;
+cvar_t  *cl_slashCommand;
 clientActive_t     cl;
 clientConnection_t clc;
 clientStatic_t     cls;
@@ -676,21 +682,17 @@ void CL_Disconnect(qboolean showMainMenu)
 	// not connected to a pure server anymore
 	cl_connectedToPureServer = qfalse;
 
+	// reset connection state
+	cls.state = CA_DISCONNECTED;
+
 	// don't try a restart if uivm is NULL, as we might be in the middle of a restart already
 	if (uivm && cls.state > CA_DISCONNECTED)
 	{
-		// restart the UI	
-		cls.state = CA_DISCONNECTED;
-
 		// shutdown the UI
 		CL_ShutdownUI();
 
 		// init the UI
 		CL_InitUI();
-	}
-	else	
-	{	
-		cls.state = CA_DISCONNECTED;
 	}
 }
 
@@ -827,7 +829,7 @@ void CL_Disconnect_f(void)
 {
 	SCR_StopCinematic();
 
-	if (cls.state != CA_DISCONNECTED && cls.state != CA_CINEMATIC)
+	if (cls.state != CA_DISCONNECTED && cls.state != CA_CINEMATIC && !clc.demoplaying)
 	{
 		Com_Error(ERR_DISCONNECT, "Disconnected from server");
 	}
@@ -1446,6 +1448,7 @@ void CL_CheckForResend(void)
 			Info_SetValueForKey(info, "protocol", va("%i", PROTOCOL_VERSION));
 			Info_SetValueForKey(info, "qport", va("%i", port));
 			Info_SetValueForKey(info, "challenge", va("%i", clc.challenge));
+			Info_SetValueForKey(info, "etVersion", Q3_VERSION); // send product info
 
 			Com_sprintf(data, sizeof(data), "connect \"%s\"", info);
 			NET_OutOfBandData(NS_CLIENT, clc.serverAddress, (const char *) data, strlen(data));
@@ -1760,7 +1763,7 @@ void CL_ServersResponsePacket(const netadr_t *from, msg_t *msg, qboolean extende
 	cls.numglobalservers = count;
 	total                = count + cls.numGlobalServerAddresses;
 
-	Com_DPrintf("CL_ServersResponsePacket - server %s: %d game servers parsed (total %d)\n", NET_AdrToString(*from), numservers, total);
+	Com_Printf("CL_ServersResponsePacket - server %s: %d game servers parsed (total %d)\n", NET_AdrToString(*from), numservers, total);
 }
 
 /**
@@ -1810,7 +1813,7 @@ void CL_ConnectionlessPacket(netadr_t from, msg_t *msg)
 				clc.onlyVisibleClients = 0;
 			}
 			cls.state              = CA_CHALLENGING;
-			cls.challengeState     = CA_CHALLENGING_INFO;
+			cls.challengeState     = CA_CHALLENGING_REQUEST;
 			clc.connectPacketCount = 0;
 			clc.connectTime        = -99999;
 
@@ -2633,7 +2636,7 @@ void CL_InitRef(void)
 
 
 #if defined(_WIN32)
-	Com_sprintf(dllName, sizeof(dllName), "renderer_%s_" ARCH_STRING DLL_EXT, cl_renderer->string);
+	Com_sprintf(dllName, sizeof(dllName), "renderer" BRANCH_SUFFIX "_%s_" ARCH_STRING DLL_EXT, cl_renderer->string);
 #elif defined(__APPLE__)
 	Com_sprintf(dllName, sizeof(dllName), "librenderer_%s" DLL_EXT, cl_renderer->string);
 #else // *nix
@@ -2643,7 +2646,7 @@ void CL_InitRef(void)
 	{
 		Cvar_ForceReset("cl_renderer");
 #if defined(_WIN32)
-		Com_sprintf(dllName, sizeof(dllName), "renderer_opengl1_" ARCH_STRING DLL_EXT);
+		Com_sprintf(dllName, sizeof(dllName), "renderer" BRANCH_SUFFIX "_opengl1_" ARCH_STRING DLL_EXT);
 #elif defined(__APPLE__)
 		Com_sprintf(dllName, sizeof(dllName), "librenderer_opengl1" DLL_EXT);
 #else // *nix
@@ -2740,6 +2743,7 @@ void CL_InitRef(void)
 	ri.GLimp_Shutdown  = GLimp_Shutdown;
 	ri.GLimp_SwapFrame = GLimp_EndFrame;
 	ri.GLimp_SetGamma  = GLimp_SetGamma;
+	ri.GLimp_GetExtraGLConfigVariables = GLimp_GetExtraGLConfigVariables;
 
 	//ri.ftol = Q_ftol;
 
@@ -2834,6 +2838,9 @@ void CL_Init(void)
 	// disabled autoswitch by default
 	Cvar_Get("cg_autoswitch", "0", CVAR_ARCHIVE);
 
+	// particle switch
+	Cvar_Get("cg_wolfparticles", "1", CVAR_ARCHIVE);
+
 	cl_conXOffset = Cvar_Get("cl_conXOffset", "0", 0);
 
 	cl_serverStatusResendTime = Cvar_Get("cl_serverStatusResendTime", "750", 0);
@@ -2869,9 +2876,9 @@ void CL_Init(void)
 	Cvar_Get("cg_drawCompass", "1", CVAR_ARCHIVE);
 	Cvar_Get("cg_drawNotifyText", "1", CVAR_ARCHIVE);
 	Cvar_Get("cg_quickMessageAlt", "1", CVAR_ARCHIVE);
-	Cvar_Get("cg_popupLimboMenu", "1", CVAR_ARCHIVE);  // not used, kept for compatibility
+	Cvar_Get("cg_popupLimboMenu", "1", CVAR_ARCHIVE);  // not used in legacy mod, kept for compatibility
 	Cvar_Get("cg_descriptiveText", "1", CVAR_ARCHIVE);
-	Cvar_Get("cg_drawTeamOverlay", "2", CVAR_ARCHIVE); // not used, kept for compatibility
+	Cvar_Get("cg_drawTeamOverlay", "2", CVAR_ARCHIVE); // not used in legacy mod, kept for compatibility
 	Cvar_Get("cg_drawGun", "1", CVAR_ARCHIVE);
 	Cvar_Get("cg_cursorHints", "1", CVAR_ARCHIVE);
 	Cvar_Get("cg_voiceSpriteTime", "6000", CVAR_ARCHIVE);
@@ -2884,7 +2891,6 @@ void CL_Init(void)
 	Cvar_Get("name", "ETLegacyPlayer", CVAR_USERINFO | CVAR_ARCHIVE);
 	Cvar_Get("rate", "25000", CVAR_USERINFO | CVAR_ARCHIVE);
 	Cvar_Get("snaps", "20", CVAR_USERINFO | CVAR_ARCHIVE);
-	Cvar_Get("etVersion", ET_VERSION, CVAR_USERINFO | CVAR_ROM);
 
 	Cvar_Get("password", "", CVAR_USERINFO);
 	Cvar_Get("cg_predictItems", "1", CVAR_ARCHIVE);
@@ -2900,6 +2906,12 @@ void CL_Init(void)
 	com_updateavailable = Cvar_Get("com_updateavailable", "0", CVAR_ROM);
 	com_updatefiles     = Cvar_Get("com_updatefiles", "", CVAR_ROM);
 
+	// Custom
+	cl_mapConfigDirectory = Cvar_Get("cl_mapConfigDirectory", "", CVAR_ARCHIVE);
+	cl_promptColor = Cvar_Get("cl_promptColor", "-1", CVAR_ARCHIVE);
+	cl_consoleAlpha = Cvar_Get("cl_consoleAlpha", "-1", CVAR_ARCHIVE);
+	cl_consoleRGB = Cvar_Get("cl_consoleRGB", "", CVAR_ARCHIVE);
+	cl_slashCommand = Cvar_Get("cl_slashCommand", "0", CVAR_ARCHIVE);
 	// register our commands
 	Cmd_AddCommand("cmd", CL_ForwardToServer_f, "Executes a reliable server command.");
 	Cmd_AddCommand("configstrings", CL_Configstrings_f, "Prints configstrings.");
@@ -2918,6 +2930,8 @@ void CL_Init(void)
 	Cmd_AddCommand("showip", CL_ShowIP_f, "Prints local network IP addresses.");
 	Cmd_AddCommand("fs_openedList", CL_OpenedPK3List_f, "Prints a list of opened PK3 names.");
 	Cmd_AddCommand("fs_referencedList", CL_ReferencedPK3List_f, "Prints a list of referrenced PK3 names.");
+
+	Cmd_AddCommand("runmod", CL_RunMod_f);
 
 #ifdef FEATURE_IRC_CLIENT
 	Cmd_AddCommand("irc_connect", IRC_Connect, "Connects to IRC server.");
@@ -3097,7 +3111,7 @@ static void CL_SetServerInfo(serverInfo_t *server, const char *info, int ping)
 			Q_strncpyz(server->version, Info_ValueForKey(info, "version"), MAX_NAME_LENGTH);
 			server->clients = atoi(Info_ValueForKey(info, "clients"));
 			server->humans  = atoi(Info_ValueForKey(info, "humans"));
-			Q_strncpyz(server->hostName, Info_ValueForKey(info, "hostname"), IS_DEFAULT_MOD ? MAX_SERVER_NAME_LENGTH : MAX_NAME_LENGTH);
+			Q_strncpyz(server->hostName, Info_ValueForKey(info, "hostname"), IS_LEGACY_MOD ? MAX_SERVER_NAME_LENGTH : MAX_NAME_LENGTH);
 			server->load = atoi(Info_ValueForKey(info, "serverload"));
 			Q_strncpyz(server->mapName, Info_ValueForKey(info, "mapname"), MAX_NAME_LENGTH);
 			server->maxClients = atoi(Info_ValueForKey(info, "sv_maxclients"));
@@ -3278,6 +3292,7 @@ void CL_ServerInfoPacketCheck(netadr_t from, msg_t *msg)
 
 	infoString = MSG_ReadString(msg);
 
+#if CHECK_PROTOCOL
 	// if this isn't the correct protocol version, ignore it
 	prot = atoi(Info_ValueForKey(infoString, "protocol"));
 	if (prot != PROTOCOL_VERSION)
@@ -3286,6 +3301,7 @@ void CL_ServerInfoPacketCheck(netadr_t from, msg_t *msg)
 		Com_Error(ERR_FATAL, "Game server uses unsupported protocol: %i, expected %i (%s)", prot, PROTOCOL_VERSION, GAMENAME_STRING);
 		return;
 	}
+#endif
 
 	// if this isn't the correct game, ignore it
 	gameName = Info_ValueForKey(infoString, "gamename");
@@ -4244,4 +4260,18 @@ void CL_OpenURL(const char *url)
 void BotImport_DrawPolygon(int color, int numpoints, float *points)
 {
 	re.DrawDebugPolygon(color, numpoints, points);
+}
+
+
+void CL_RunMod_f(void)
+{
+	if (Cmd_Argc() != 2)
+	{
+		Com_Printf("usage: runmod [modname]\n");
+		return;
+	}
+	Cvar_Set("fs_game", Cmd_Argv(1));
+	FS_ConditionalRestart(clc.checksumFeed);
+	Cbuf_AddText("exec autoexec.cfg\n");
+	Cbuf_AddText("vid_restart\n");
 }

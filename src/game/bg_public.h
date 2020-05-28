@@ -48,6 +48,9 @@
 #define _attribute(x)
 #endif
 
+#define LEGACY_MOD         "Legacy"
+#define LEGACY///< for omnibot
+
 #if defined(CGAMEDLL) || defined(FEATURE_SERVERMDX)
 #define USE_MDXFILE
 #endif
@@ -88,25 +91,8 @@
 #define DEAD_BODYHEIGHT_DELTA            20 ///< dead    body height 4
 #define PRONE_BODYHEIGHT_DELTA           0  ///< prone   body height -8
 
-#define PRONE_BODYHEIGHT_BBOX 12    ///<
-#define DEAD_BODYHEIGHT_BBOX 24     ///< was the result of DEFAULT_VIEWHEIGHT - CROUCH_VIEWHEIGHT (40 - 16) stored in crouchMaxZ
-
 extern vec3_t playerlegsProneMins;
 extern vec3_t playerlegsProneMaxs;
-
-/**
- * @var playerHeadProneMins
- * @brief more than just head, try to make a box for all the
- * player model that extends out (weapons and arms too)
- */
-extern vec3_t playerHeadProneMins;
-
-/**
- * @var playerHeadProneMaxs
- * @brief more than just head, try to make a box for all the
- * player model that extends out (weapons and arms too)
- */
-extern vec3_t playerHeadProneMaxs;
 
 #define MAX_COMMANDMAP_LAYERS   16
 
@@ -411,7 +397,7 @@ extern const int aReinfSeeds[MAX_REINFSEEDS];
 #define CS_CHARGETIMES                  38
 #define CS_FILTERCAMS                   39
 
-#define CS_MODINFO                   40
+#define CS_LEGACYINFO                   40
 #define CS_SVCVAR                       41
 #define CS_CONFIGNAME                   42
 
@@ -633,7 +619,7 @@ typedef struct
 
 	// callbacks to test the world
 	// these will be different functions during game and cgame
-	void (*trace)(trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask);
+	void (*trace)(trace_t * results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask);
 	int (*pointcontents)(const vec3_t point, int passEntityNum);
 
 	/// used to determine if the player move is for prediction if it is, the movement should trigger no events
@@ -642,7 +628,7 @@ typedef struct
 } pmove_t;
 
 // if a full pmove isn't done on the client, you can just update the angles
-void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, void(trace) (trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask), int tracemask);
+void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, void (trace) (trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask), int tracemask);
 int Pmove(pmove_t *pmove);
 void PmovePredict(pmove_t *pmove, float frametime);
 
@@ -878,14 +864,14 @@ typedef enum
 
 	WP_GARAND_SCOPE,           ///< 40
 	WP_K43_SCOPE,              ///< 41
-	WP_FG42_SCOPE,             ///< 42
+	WP_FG42SCOPE,              ///< 42
 	WP_MORTAR_SET,             ///< 43
 	WP_MEDIC_ADRENALINE,       ///< 44
 	WP_AKIMBO_SILENCEDCOLT,    ///< 45
 	WP_AKIMBO_SILENCEDLUGER,   ///< 46
 	WP_MOBILE_MG42_SET,        ///< 47
 
-	// league weapons
+	// legacy weapons
 	WP_KNIFE_KABAR,            ///< 48
 	WP_MOBILE_BROWNING,        ///< 49
 	WP_MOBILE_BROWNING_SET,    ///< 50
@@ -1399,8 +1385,7 @@ typedef enum
 	EV_SHOVE_SOUND,    ///< 127 - ETL shove
 	EV_BODY_DP,        ///< 128
 	EV_FLAG_INDICATOR, ///< 129 - objective indicator
-	EV_MISSILE_FALLING,///< 130
-	EV_MAX_EVENTS      ///< 131 - just added as an 'endcap'
+	EV_MAX_EVENTS      ///< 130 - just added as an 'endcap'
 } entity_event_t;
 
 extern const char *eventnames[EV_MAX_EVENTS];
@@ -1620,10 +1605,9 @@ typedef enum hudHeadAnimNumber_e
 	MAX_HD_ANIMATIONS
 } hudHeadAnimNumber_t;
 
-#define ANIMFL_LADDERANIM    0x1
-#define ANIMFL_FIRINGANIM    0x2
-#define ANIMFL_REVERSED      0x4
-#define ANIMFL_RELOADINGANIM 0x8
+#define ANIMFL_LADDERANIM   0x1
+#define ANIMFL_FIRINGANIM   0x2
+#define ANIMFL_REVERSED     0x4
 
 /**
  * @struct animation_s
@@ -1750,7 +1734,6 @@ typedef enum extWeaponStats_e
 	WS_GARAND,         ///< 24
 	WS_K43,            ///< 25
 	WS_MP34,           ///< 26
-	WS_SYRINGE,        ///< 27
 
 	WS_MAX
 } extWeaponStats_t;
@@ -1861,7 +1844,7 @@ typedef enum item_s
 	ITEM_WEAPON_GARAND,
 	ITEM_WEAPON_GARAND_SCOPE,
 	ITEM_WEAPON_FG42,
-	ITEM_WEAPON_FG42_SCOPE,
+	ITEM_WEAPON_FG42SCOPE,
 	ITEM_WEAPON_MORTAR,
 	ITEM_WEAPON_MORTAR_SET,
 	ITEM_WEAPON_MORTAR2,
@@ -2004,11 +1987,10 @@ typedef enum
 	HINT_TANK,                  ///< 45
 	HINT_SATCHELCHARGE,
 	//HINT_LOCKPICK,            ///< unused
-	HINT_RESTRICTED = 48,       ///< invisible user with no target
 
-	HINT_BAD_USER,              ///< invisible user with no target
+	HINT_BAD_USER = 48,         ///< invisible user with no target
 
-	HINT_NUM_HINTS = 50,
+	HINT_NUM_HINTS = 49,
 } hintType_t;
 
 void BG_EvaluateTrajectory(const trajectory_t *tr, int atTime, vec3_t result, qboolean isAngle, int splinePath);
@@ -2401,7 +2383,6 @@ typedef enum
 	//ANIM_BITFLAG_SNEAKING,
 	//ANIM_BITFLAG_AFTERBATTLE,
 	ANIM_BITFLAG_ZOOMING = 0,
-	ANIM_BITFLAG_HOLDING = 1,
 
 	NUM_ANIM_COND_BITFLAG
 } animScriptGenBitFlag_t;
@@ -2920,9 +2901,7 @@ typedef enum popupMessageBigType_e
 {
 	PM_SKILL = 0,
 	PM_RANK,
-#ifdef FEATURE_PRESTIGE
-	PM_PRESTIGE,
-#endif
+	PM_DISGUISE,
 	PM_BIG_NUM_TYPES
 } popupMessageBigType_t;
 
@@ -2930,10 +2909,10 @@ typedef enum popupMessageBigType_e
 #define HITBOXBIT_LEGS   2048
 #define HITBOXBIT_CLIENT 4096
 
-void PM_TraceLegs(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, trace_t *bodytrace, vec3_t viewangles, void(tracefunc)(trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask), int ignoreent, int tracemask, qboolean checkStepping);
-void PM_TraceHead(trace_t *trace, vec3_t start, vec3_t end, trace_t *bodytrace, vec3_t viewangles, void(tracefunc)(trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask), int ignoreent, int tracemask, qboolean checkStepping);
-void PM_TraceAllParts(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, qboolean allowAdjust, qboolean checkStepping);
-void PM_TraceAll(trace_t *trace, vec3_t start, vec3_t end, qboolean allowAdjust, qboolean checkStepping);
+void PM_TraceLegs(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, trace_t *bodytrace, vec3_t viewangles, void (tracefunc)(trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask), int ignoreent, int tracemask);
+void PM_TraceHead(trace_t *trace, vec3_t start, vec3_t end, trace_t *bodytrace, vec3_t viewangles, void (tracefunc)(trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask), int ignoreent, int tracemask);
+void PM_TraceAllParts(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end);
+void PM_TraceAll(trace_t *trace, vec3_t start, vec3_t end);
 
 /**
  * @enum sysMsg_t

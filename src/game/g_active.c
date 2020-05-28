@@ -534,8 +534,7 @@ qboolean G_SpectatorAttackFollow(gentity_t *ent)
 	// also put the start-point a bit forward, so we don't start the trace in solid..
 	VectorMA(start, 75.0f, forward, start);
 
-	// trap_Trace(&tr, start, mins, maxs, end, ent->client->ps.clientNum, CONTENTS_BODY | CONTENTS_CORPSE);
-    G_HistoricalTrace(ent, &tr, start, mins, maxs, end, ent->s.number,CONTENTS_BODY | CONTENTS_CORPSE);
+	trap_Trace(&tr, start, mins, maxs, end, ent->client->ps.clientNum, CONTENTS_BODY | CONTENTS_CORPSE);
 
 	if ((&g_entities[tr.entityNum])->client)
 	{
@@ -679,7 +678,7 @@ void SpectatorThink(gentity_t *ent, usercmd_t *ucmd)
 	{
 		Cmd_FollowCycle_f(ent, -1, (client->buttons & BUTTON_SPRINT));
 	}
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 #ifdef FEATURE_OMNIBOT
 	// activate button swaps places with bot
 	else if (client->sess.sessionTeam != TEAM_SPECTATOR && g_allowBotSwap.integer &&
@@ -1008,9 +1007,7 @@ void ClientEvents(gentity_t *ent, int oldEventSequence)
 			ent->client->ps.powerups[PW_OPS_DISGUISED] = 0;
 			ent->client->disguiseClientNum             = -1;
 
-			G_HistoricalTraceBegin(ent);
 			mg42_fire(ent);
-			G_HistoricalTraceEnd(ent);
 
 			// Only 1 stats bin for mg42
 #ifndef DEBUG_STATS
@@ -1028,9 +1025,7 @@ void ClientEvents(gentity_t *ent, int oldEventSequence)
 			ent->client->ps.powerups[PW_OPS_DISGUISED] = 0;
 			ent->client->disguiseClientNum             = -1;
 
-			G_HistoricalTraceBegin(ent);
 			mountedmg42_fire(ent);
-			G_HistoricalTraceEnd(ent);
 
 			// Only 1 stats bin for mg42
 #ifndef DEBUG_STATS
@@ -1052,9 +1047,7 @@ void ClientEvents(gentity_t *ent, int oldEventSequence)
 			ent->client->ps.powerups[PW_OPS_DISGUISED] = 0;
 			ent->client->disguiseClientNum             = -1;
 
-			G_HistoricalTraceBegin(ent);
 			aagun_fire(ent);
-			G_HistoricalTraceEnd(ent);
 			break;
 		case EV_FIRE_WEAPON:
 		case EV_FIRE_WEAPONB:
@@ -1222,8 +1215,6 @@ void ClientThink_real(gentity_t *ent)
 		ucmd->serverTime = level.time - 1000;
 		//G_Printf("serverTime >>>>>\n" );
 	}
-
-	client->frameOffset = trap_Milliseconds() - level.frameStartTime;
 
 	msec = ucmd->serverTime - client->ps.commandTime;
 	// following others may result in bad times, but we still want
@@ -1730,9 +1721,8 @@ void SpectatorClientEndFrame(gentity_t *ent)
 		int i;
 		ent->client->ps.stats[STAT_XP] = 0;
 
-		if ((g_gametype.integer == GT_WOLF_CAMPAIGN && g_xpSaver.integer) ||
-			(g_gametype.integer == GT_WOLF_CAMPAIGN && (g_campaigns[level.currentCampaign].current != 0 && !level.newCampaign)) ||
-			(g_gametype.integer == GT_WOLF_LMS && g_currentRound.integer != 0))
+		if ((g_gametype.integer == GT_WOLF_CAMPAIGN && (g_campaigns[level.currentCampaign].current != 0 && !level.newCampaign)) ||
+		    (g_gametype.integer == GT_WOLF_LMS && g_currentRound.integer != 0))
 		{
 			for (i = 0; i < SK_NUM_SKILLS; ++i)
 			{
@@ -1752,7 +1742,7 @@ void SpectatorClientEndFrame(gentity_t *ent)
 	// if we are doing a chase cam or a remote view, grab the latest info
 	if (ent->client->sess.spectatorState == SPECTATOR_FOLLOW || (ent->client->ps.pm_flags & PMF_LIMBO))
 	{
-		int       testtime;
+		int       clientNum, testtime;
 		gclient_t *cl;
 		qboolean  do_respawn = qfalse;
 
@@ -1826,9 +1816,22 @@ void SpectatorClientEndFrame(gentity_t *ent)
 			return;
 		}
 #endif
-		if (ent->client->sess.spectatorClient >= 0)
+
+		clientNum = ent->client->sess.spectatorClient;
+
+		// team follow1 and team follow2 go to whatever clients are playing
+		if (clientNum == -1)
 		{
-			cl = &level.clients[ent->client->sess.spectatorClient];
+			clientNum = level.follow1;
+		}
+		else if (clientNum == -2)
+		{
+			clientNum = level.follow2;
+		}
+
+		if (clientNum >= 0)
+		{
+			cl = &level.clients[clientNum];
 			if (cl->pers.connected == CON_CONNECTED && cl->sess.sessionTeam != TEAM_SPECTATOR)
 			{
 				int flags = (cl->ps.eFlags & ~(EF_VOTED)) | (ent->client->ps.eFlags & (EF_VOTED));
@@ -1873,10 +1876,24 @@ void SpectatorClientEndFrame(gentity_t *ent)
 
 				return;
 			}
+			else
+			{
+				// drop them to free spectators unless they are dedicated camera followers
+				if (ent->client->sess.spectatorClient >= 0)
+				{
+					ent->client->sess.spectatorState = SPECTATOR_FREE;
+					ClientBegin(ent->client - level.clients);
+				}
+			}
 		}
-
-		ent->client->sess.spectatorState = SPECTATOR_FREE;
-		ClientBegin(ent->client - level.clients);
+		else
+		{
+			if (clientNum == -1) // level.follow1/follow2 couldn't be found
+			{
+				ent->client->sess.spectatorState = SPECTATOR_FREE;
+				ClientBegin(ent->client - level.clients);
+			}
+		}
 	}
 
 	// we are at a free-floating spec state for a player,
@@ -2156,8 +2173,7 @@ void ClientEndFrame(gentity_t *ent)
 	}
 
 	ent->client->ps.stats[STAT_XP] = 0;
-	if ((g_gametype.integer == GT_WOLF_CAMPAIGN && g_xpSaver.integer) ||
-		(g_gametype.integer == GT_WOLF_CAMPAIGN && (g_campaigns[level.currentCampaign].current != 0 && !level.newCampaign)) ||
+	if ((g_gametype.integer == GT_WOLF_CAMPAIGN && (g_campaigns[level.currentCampaign].current != 0 && !level.newCampaign)) ||
 	    (g_gametype.integer == GT_WOLF_LMS && g_currentRound.integer != 0))
 	{
 		for (i = 0; i < SK_NUM_SKILLS; ++i)
@@ -2332,45 +2348,6 @@ void ClientEndFrame(gentity_t *ent)
 			// green
 			G_RailBox(legs->r.currentOrigin, legs->r.mins, legs->r.maxs, tv(0.f, 1.f, 0.f), legs->s.number | HITBOXBIT_LEGS);
 			G_FreeEntity(legs);
-		}
-	}
-
-	// debug head and legs box for collision (see PM_TraceHead and PM_TraceLegs)
-	if (g_debugPlayerHitboxes.integer & 4)
-	{
-		vec3_t headOffset, legsOffset;
-		vec3_t flatforward;
-		float  angle;
-
-		angle          = DEG2RAD(ent->client->ps.viewangles[YAW]);
-		flatforward[0] = cos(angle);
-		flatforward[1] = sin(angle);
-		flatforward[2] = 0;
-
-		if (ent->client->ps.eFlags & EF_DEAD)
-		{
-			VectorScale(flatforward, -36, headOffset);
-			VectorScale(flatforward, 32, legsOffset);
-		}
-		else    // EF_PRONE
-		{
-			VectorScale(flatforward, 36, headOffset);
-			VectorScale(flatforward, -32, legsOffset);
-		}
-
-		VectorAdd(ent->client->ps.origin, headOffset, headOffset);
-		VectorAdd(ent->client->ps.origin, legsOffset, legsOffset);
-
-		// cyan
-		G_RailBox(ent->client->ps.origin, ent->r.mins, ent->r.maxs, tv(0.f, 1.f, 1.f), ent->s.number);
-
-		if (ent->client->ps.eFlags & (EF_PRONE | EF_DEAD))
-		{
-			// cyan
-			G_RailBox(headOffset, playerHeadProneMins, playerHeadProneMaxs, tv(0.f, 1.f, 1.f), ent->s.number | HITBOXBIT_HEAD);
-
-			// cyan
-			G_RailBox(legsOffset, playerlegsProneMins, playerlegsProneMaxs, tv(0.f, 1.f, 1.f), ent->s.number | HITBOXBIT_LEGS);
 		}
 	}
 

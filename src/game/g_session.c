@@ -61,31 +61,15 @@ void G_WriteClientSessionData(gclient_t *client, qboolean restart)
 
 #ifdef FEATURE_MULTIVIEW
 #ifdef FEATURE_RATING
-#ifdef FEATURE_PRESTIGE
-	s = va("%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %f %f %f %f %i %i %i %i %i %i %i %i %i",
-#else
 	s = va("%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %f %f %f %f %i %i %i %i %i %i %i %i",
-#endif
-#else
-#ifdef FEATURE_PRESTIGE
-	s = va("%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
 #else
 	s = va("%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
 #endif
-#endif
 #else
 #ifdef FEATURE_RATING
-#ifdef FEATURE_PRESTIGE
-	s = va("%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %f %f %f %f %i %i %i %i %i %i %i",
-#else
 	s = va("%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %f %f %f %f %i %i %i %i %i %i",
-#endif
-#else
-#ifdef FEATURE_PRESTIGE
-	s = va("%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
 #else
 	s = va("%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
-#endif
 #endif
 #endif
 	       client->sess.sessionTeam,
@@ -118,9 +102,6 @@ void G_WriteClientSessionData(gclient_t *client, qboolean restart)
 	       client->sess.sigma,
 	       client->sess.oldmu,
 	       client->sess.oldsigma,
-#endif
-#ifdef FEATURE_PRESTIGE
-	       client->sess.prestige,
 #endif
 #ifdef FEATURE_MULTIVIEW
 	       (mvc & 0xFFFF),
@@ -245,12 +226,6 @@ void G_CalcRank(gclient_t *client)
 	int i, highestskill = 0;
 
 #ifdef FEATURE_RATING
-	// rating values for rank levels
-	// lognormal(e, 2/e) for each 1/11th percentile
-	float rankRating[NUM_EXPERIENCE_LEVELS] = { 0.000001,
-	                                            5.674106,  7.766937,  9.712880,  11.724512, 13.933123,
-	                                            16.482425, 19.587310, 23.644035, 29.567854, 40.473632 };
-
 	if (g_skillRating.integer)
 	{
 		for (i = 0; i < SK_NUM_SKILLS; i++)
@@ -258,23 +233,11 @@ void G_CalcRank(gclient_t *client)
 			G_SetPlayerSkill(client, i);
 		}
 
-		// set rank
-		for (i = 0; i < NUM_EXPERIENCE_LEVELS; i++)
-		{
-			if (client->sess.mu - 3 * client->sess.sigma <= rankRating[i])
-			{
-				client->sess.rank = i - 1;
-				break;
-			}
-			else
-			{
-				client->sess.rank = 10;
-			}
-		}
+		client->sess.rank = (int)(MAX(client->sess.mu - 3 * client->sess.sigma, 0.f) / (2 * MU) * NUM_EXPERIENCE_LEVELS);
 
-		if (client->sess.rank < 0)
+		if (client->sess.rank > 10)
 		{
-			client->sess.rank = 0;
+			client->sess.rank = 10;
 		}
 
 		return;
@@ -331,31 +294,15 @@ void G_ReadSessionData(gclient_t *client)
 
 #ifdef FEATURE_MULTIVIEW
 #ifdef FEATURE_RATING
-#ifdef FEATURE_PRESTIGE
-	sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %f %f %f %f %i %i %i %i %i %i %i %i %i",
-#else
 	sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %f %f %f %f %i %i %i %i %i %i %i %i",
-#endif
-#else
-#ifdef FEATURE_PRESTIGE
-	sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
 #else
 	sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
 #endif
-#endif
 #else
 #ifdef FEATURE_RATING
-#ifdef FEATURE_PRESTIGE
-	sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %f %f %f %f %i %i %i %i %i %i %i",
-#else
 	sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %f %f %f %f %i %i %i %i %i %i",
-#endif
-#else
-#ifdef FEATURE_PRESTIGE
-	sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
 #else
 	sscanf(s, "%i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i %i",
-#endif
 #endif
 #endif
 	       (int *)&client->sess.sessionTeam,
@@ -388,9 +335,6 @@ void G_ReadSessionData(gclient_t *client)
 	       &client->sess.sigma,
 	       &client->sess.oldmu,
 	       &client->sess.oldsigma,
-#endif
-#ifdef FEATURE_PRESTIGE
-	       &client->sess.prestige,
 #endif
 #ifdef FEATURE_MULTIVIEW
 	       &mvc_l,

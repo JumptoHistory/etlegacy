@@ -1807,7 +1807,7 @@ void SV_DemoReadFrame(void)
 read_next_demo_frame: // used to read another whole demo frame
 
 	// Demo freezed? Just stop reading the demo frames
-	if (Cvar_VariableIntegerValue("sv_freezeDemo"))
+	if (Cvar_VariableIntegerValue("cl_freezeDemo"))
 	{
 		svs.time = memsvtime; // reset server time to the same time as the previous frame, to avoid the time going backward when resuming the demo (which will disconnect every players)
 		return;
@@ -1991,11 +1991,11 @@ static void SV_Demo_Record_f(void)
 	}
 	else
 	{
-		int number = 0;
+		int number;
 		// scan for a free demo name
-		while (1)
+		for (number = 0; number >= 0; number++)
 		{
-			Com_sprintf(sv.demoName, sizeof(sv.demoName), "svdemos/%d.%s%d", number++, SVDEMOEXT, PROTOCOL_VERSION);
+			Com_sprintf(sv.demoName, sizeof(sv.demoName), "svdemos/%d.%s%d", number, SVDEMOEXT, PROTOCOL_VERSION);
 			if (!FS_FileExists(sv.demoName))
 			{
 				break;  // file doesn't exist

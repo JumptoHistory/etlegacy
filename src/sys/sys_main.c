@@ -61,6 +61,8 @@
 static char binaryPath[MAX_OSPATH]  = { 0 };
 static char installPath[MAX_OSPATH] = { 0 };
 
+cvar_t *sys_processAffinityMask = NULL;
+
 /**
  * @brief Sys_SetBinaryPath
  * @param[in] path
@@ -258,6 +260,8 @@ void Sys_Init(void)
 
 	Cvar_Set("arch", OS_STRING " " ARCH_STRING);
 	Cvar_Set("username", Sys_GetCurrentUser());
+
+	sys_processAffinityMask = Cvar_Get("sys_processAffinityMask", "", CVAR_ARCHIVE);
 }
 
 /**
@@ -415,7 +419,7 @@ void Sys_Print(const char *msg)
 	CON_Print(msg);
 #endif
 
-#if defined(ETLEGACY_DEBUG) && defined(_WIN32)
+#if defined(LEGACY_DEBUG) && defined(_WIN32)
 	OutputDebugString(msg);
 #endif
 }
@@ -606,7 +610,7 @@ static void *Sys_TryLibraryLoad(const char *base, const char *gamedir, const cha
 			libHandle = Sys_LoadLibrary(fn);
 			if (!libHandle)
 			{
-				Com_Printf("failed: %s\n", Sys_LibraryError());
+				Com_Printf("failed: %s", Sys_LibraryError());
 			}
 			else
 			{
@@ -628,7 +632,7 @@ static void *Sys_TryLibraryLoad(const char *base, const char *gamedir, const cha
 		libHandle = Sys_LoadLibrary(fn);
 		if (!libHandle)
 		{
-			Com_Printf("failed: %s\n", Sys_LibraryError());
+			Com_Printf("failed: %s", Sys_LibraryError());
 		}
 		else
 		{
@@ -647,7 +651,7 @@ static void *Sys_TryLibraryLoad(const char *base, const char *gamedir, const cha
 		libHandle = Sys_LoadLibrary(fn);
 		if (!libHandle)
 		{
-			Com_Printf("failed: %s\n", Sys_LibraryError());
+			Com_Printf("failed: %s", Sys_LibraryError());
 		}
 		else
 		{
@@ -664,7 +668,7 @@ static void *Sys_TryLibraryLoad(const char *base, const char *gamedir, const cha
 
 	if (!libHandle)
 	{
-		Com_Printf("failed: %s\n", Sys_LibraryError());
+		Com_Printf("failed: %s", Sys_LibraryError());
 		return NULL;
 	}
 
@@ -730,7 +734,7 @@ void *Sys_LoadGameDll(const char *name, qboolean extract,
 	// loaded from homepath or the basepath, let's pull it out of the pak.
 	// This means we only *need* the copy that's in the pak, and will use
 	// it if another copy isn't found first.
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 #define SEARCHPATH1 basepath
 #define SEARCHPATH2 homepath
 #define LIB_DO_UNPACK Cvar_VariableIntegerValue("sv_pure")
@@ -777,7 +781,7 @@ void *Sys_LoadGameDll(const char *name, qboolean extract,
 			libHandle = Sys_TryLibraryLoad(homepath, gamedir, fname);
 		}
 
-		// use League ui for download process (mod binary pk3 isn't extracted)
+		// use legacy ui for download process (mod binary pk3 isn't extracted)
 		if (!strcmp(name, "ui") && !libHandle && strcmp(gamedir, DEFAULT_MODGAME))
 		{
 			Com_Printf("Sys_LoadDll: mod initialisation - ui fallback\n");
@@ -803,7 +807,7 @@ void *Sys_LoadGameDll(const char *name, qboolean extract,
 
 	if (!*entryPoint || !dllEntry)
 	{
-		Com_Printf("Sys_LoadDll(%s/%s) failed to find vmMain function: %s\n", gamedir, name, Sys_LibraryError());
+		Com_Printf("Sys_LoadDll(%s/%s) failed to find vmMain function:\n%s\n", gamedir, name, Sys_LibraryError());
 		Sys_UnloadLibrary(libHandle);
 
 		return NULL;
@@ -921,22 +925,20 @@ void Sys_SetUpConsoleAndSignals(void)
 	CON_Init();
 #endif
 
-// don't set signal handlers for anything that will generate coredump (in DEBUG builds)
-#if !defined(ETLEGACY_DEBUG)
 	signal(SIGILL, Sys_SigHandler);
 	signal(SIGFPE, Sys_SigHandler);
 	signal(SIGSEGV, Sys_SigHandler);
-#endif
-	signal(SIGINT, Sys_SigHandler);
 	signal(SIGTERM, Sys_SigHandler);
+	signal(SIGINT, Sys_SigHandler);
 }
 
 /**
  * @brief Main game loop
  */
+void Sys_SetProcessProperties(void);
 void Sys_GameLoop(void)
 {
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 	int startTime, endTime, totalMsec, countMsec;
 	totalMsec = countMsec = 0;
 #endif
@@ -945,7 +947,7 @@ void Sys_GameLoop(void)
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
 	while (qtrue)
 	{
-#if defined(_MSC_VER) && defined(ETLEGACY_DEBUG) && !defined(_WIN64)
+#if defined(_MSC_VER) && defined(LEGACY_DEBUG) && !defined(_WIN64)
 		// set low precision every frame, because some system calls
 		// reset it arbitrarily
 		_controlfp(_PC_24, _MCW_PC);
@@ -953,7 +955,7 @@ void Sys_GameLoop(void)
 		// syscall turns them back on!
 #endif
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 		startTime = Sys_Milliseconds();
 #endif
 
@@ -961,7 +963,7 @@ void Sys_GameLoop(void)
 		//IN_Frame();
 		Com_Frame();
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 		endTime    = Sys_Milliseconds();
 		totalMsec += endTime - startTime;
 		countMsec++;
@@ -971,6 +973,12 @@ void Sys_GameLoop(void)
 			Com_Printf("frame:%i total used:%i frame time:%i\n", countMsec, totalMsec, endTime - startTime);
 		}
 #endif
+
+		if (sys_processAffinityMask && sys_processAffinityMask->modified)
+		{
+			Sys_SetProcessProperties();
+			sys_processAffinityMask->modified = qfalse;
+		}
 	}
 #pragma clang diagnostic pop
 }
@@ -1022,7 +1030,7 @@ int main(int argc, char **argv)
 		}
 		else if (quarantine_status >= 2)
 		{
-			Sys_Dialog(DT_ERROR, "An error occured while removing the app quarantine flag automatically. Please read the installation instructions on removing the app quarantine on the ET: Legacy wiki:\r\n\r\nhttps://github.com/etlegacy/etlegacy/wiki/Mac-OS-X", "Can't remove app quarantine");
+			Sys_Dialog(DT_ERROR, "An error occured while removing the app quarantine flag automatically. Please read the installation instructions on removing the app quarantine on the ET Legacy wiki:\r\n\r\nhttps://dev.etlegacy.com/projects/etlegacy/wiki/Mac_OS_X", "Can't remove app quarantine");
 			Sys_Exit(EXIT_FAILURE);
 		}
 
@@ -1075,7 +1083,7 @@ int main(int argc, char **argv)
 
 	// hide the early console since we've reached the point where we
 	// have a working graphics subsystems
-#ifndef ETLEGACY_DEBUG
+#ifndef LEGACY_DEBUG
 	if (!com_dedicated->integer && !com_viewlog->integer)
 	{
 		Sys_ShowConsoleWindow(0, qfalse);

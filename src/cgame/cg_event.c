@@ -1390,7 +1390,7 @@ void CG_Effect(centity_t *cent, vec3_t origin, vec3_t dir)
 	{
 		int effect;
 
-		effect = (CG_PointContents(origin, 0) & CONTENTS_WATER) ? PS_FX_WATER : PS_FX_COMMON;
+		effect = (CG_PointContents(origin, 0) & CONTENTS_WATER) ? PS_FX_WATER : PS_FX_NONE;
 
 		CG_MissileHitWall(WP_DYNAMITE, effect, origin, dir, 0, -1);
 		return;
@@ -2144,7 +2144,7 @@ void CG_EntityEvent(centity_t *cent, vec3_t position)
 		break;
 	case EV_FILL_CLIP:
 		// IS_VALID_WEAPON(es->weapon) ?
-		if (cgs.clientinfo[es->clientNum].skill[SK_LIGHT_WEAPONS] >= 2 && (GetWeaponTableData(es->weapon)->attributes & WEAPON_ATTRIBUT_FAST_RELOAD) && cg_weapons[es->weapon].reloadFastSound)
+		if (cgs.clientinfo[cg.clientNum].skill[SK_LIGHT_WEAPONS] >= 2 && (GetWeaponTableData(es->weapon)->attributes & WEAPON_ATTRIBUT_FAST_RELOAD) && cg_weapons[es->weapon].reloadFastSound)
 		{
 			trap_S_StartSound(NULL, es->number, CHAN_WEAPON, cg_weapons[es->weapon].reloadFastSound);
 		}
@@ -2297,7 +2297,7 @@ void CG_EntityEvent(centity_t *cent, vec3_t position)
 		vec3_t dir;
 		int    effect;
 
-		effect = (CG_PointContents(position, 0) & CONTENTS_WATER) ? PS_FX_WATER : PS_FX_COMMON;
+		effect = (CG_PointContents(position, 0) & CONTENTS_WATER) ? PS_FX_WATER : PS_FX_NONE;
 
 		ByteToDir(es->eventParm, dir);
 		CG_MissileHitWall(es->weapon, effect, position, dir, 0, es->number);
@@ -2308,7 +2308,7 @@ void CG_EntityEvent(centity_t *cent, vec3_t position)
 		vec3_t dir;
 		int    effect;
 
-		effect = (CG_PointContents(position, 0) & CONTENTS_WATER) ? PS_FX_WATER : PS_FX_COMMON;
+		effect = (CG_PointContents(position, 0) & CONTENTS_WATER) ? PS_FX_WATER : PS_FX_NONE;
 		ByteToDir(es->eventParm, dir);
 		if (es->weapon == WP_ARTY || es->weapon == WP_AIRSTRIKE || es->weapon == WP_SMOKE_MARKER)
 		{
@@ -2322,6 +2322,16 @@ void CG_EntityEvent(centity_t *cent, vec3_t position)
 	break;
 	case EV_MORTAR_IMPACT:
 	{
+		// Sound effect for spotter round, had to do this as half-second bomb warning
+		if (cg_weapons[es->weapon].missileFallSound.count)
+		{
+			int i = cg_weapons[es->weapon].missileFallSound.count;
+
+			i = rand() % i;
+
+			trap_S_StartSoundExVControl(NULL, es->number, CHAN_AUTO, cg_weapons[es->weapon].missileFallSound.sounds[i], SND_OKTOCUT, 255);
+		}
+
 		CG_MortarImpact(cent, es->origin2);
 		break;
 	}
@@ -2810,17 +2820,7 @@ void CG_EntityEvent(centity_t *cent, vec3_t position)
 		cg.redFlagCounter  = es->otherEntityNum;
 		cg.blueFlagCounter = es->otherEntityNum2;
 		break;
-    case EV_MISSILE_FALLING:
-        // Sound effect for spotter round, had to do this as half-second bomb warning
-        if (cg_weapons[es->weapon].missileFallSound.count)
-        {
-            int i = cg_weapons[es->weapon].missileFallSound.count;
-            
-            i = rand() % i;
-            
-            trap_S_StartSoundExVControl(NULL, es->number, CHAN_AUTO, cg_weapons[es->weapon].missileFallSound.sounds[i], SND_OKTOCUT, 255);
-        }
-        break;
+
 	default:
 		if (cg.demoPlayback)
 		{

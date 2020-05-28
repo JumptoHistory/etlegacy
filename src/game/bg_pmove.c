@@ -254,17 +254,7 @@ void PM_ClipVelocity(vec3_t in, vec3_t normal, vec3_t out, float overbounce)
  * @param[in] ignoreent
  * @param[in] tracemask
  */
-void PM_TraceLegs(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, trace_t *bodytrace, vec3_t viewangles,
-                  void (tracefunc) (trace_t *results,
-                                    const vec3_t start,
-                                    const vec3_t mins,
-                                    const vec3_t maxs,
-                                    const vec3_t end,
-                                    int passEntityNum,
-                                    int contentMask),
-                  int ignoreent,
-                  int tracemask,
-                  qboolean checkStepping)
+void PM_TraceLegs(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, trace_t *bodytrace, vec3_t viewangles, void(tracefunc) (trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask), int ignoreent, int tracemask)
 {
 	vec3_t ofs, org, point;
 	vec3_t flatforward;
@@ -287,7 +277,7 @@ void PM_TraceLegs(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, t
 	{
 		VectorScale(flatforward, -32, ofs);
 	}
-	else    // EF_DEAD
+	else
 	{
 		VectorScale(flatforward, 32, ofs);
 	}
@@ -295,8 +285,8 @@ void PM_TraceLegs(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, t
 	VectorAdd(start, ofs, org);
 	VectorAdd(end, ofs, point);
 	tracefunc(trace, org, playerlegsProneMins, playerlegsProneMaxs, point, ignoreent, tracemask);
-	if (checkStepping && (!bodytrace || trace->fraction < bodytrace->fraction ||
-	                      trace->allsolid))
+	if (!bodytrace || trace->fraction < bodytrace->fraction ||
+	    trace->allsolid)
 	{
 		trace_t steptrace;
 
@@ -345,22 +335,24 @@ void PM_TraceLegs(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, t
  * @param[in] tracemask
  */
 void PM_TraceHead(trace_t *trace, vec3_t start, vec3_t end, trace_t *bodytrace, vec3_t viewangles,
-                  void (tracefunc) (trace_t *results,
-                                    const vec3_t start,
-                                    const vec3_t mins,
-                                    const vec3_t maxs,
-                                    const vec3_t end,
-                                    int passEntityNum,
-                                    int contentMask),
+                  void(tracefunc) (trace_t *results,
+                                   const vec3_t start,
+                                   const vec3_t mins,
+                                   const vec3_t maxs,
+                                   const vec3_t end,
+                                   int passEntityNum,
+                                   int contentMask),
                   int ignoreent,
-                  int tracemask,
-                  qboolean checkStepping)
+                  int tracemask)
 {
 	vec3_t ofs;
-	vec3_t org;
 	vec3_t flatforward;
 	vec3_t point;
 	float  angle;
+	// more than just head, try to make a box for all the
+	// player model that extends out (weapons and arms too)
+	vec3_t mins = { -18.f, -18.f, -2.f };
+	vec3_t maxs = { 18.f, 18.f, 10.f };
 
 	// don't let players block head
 	tracemask &= ~(CONTENTS_BODY | CONTENTS_CORPSE);
@@ -374,35 +366,13 @@ void PM_TraceHead(trace_t *trace, vec3_t start, vec3_t end, trace_t *bodytrace, 
 	{
 		VectorScale(flatforward, 36, ofs);
 	}
-	else    // EF_DEAD
+	else
 	{
 		VectorScale(flatforward, -36, ofs);
 	}
 
-	VectorAdd(start, ofs, org);
 	VectorAdd(end, ofs, point);
-	tracefunc(trace, org, playerHeadProneMins, playerHeadProneMaxs, point, ignoreent, tracemask);
-	if (checkStepping && (!bodytrace || trace->fraction < bodytrace->fraction ||
-	                      trace->allsolid))
-	{
-		trace_t steptrace;
-
-		// head are clipping sooner than body
-		// see if our head can step up
-
-		// give it a try with the new height
-		ofs[2] += STEPSIZE;
-
-		VectorAdd(start, ofs, org);
-		VectorAdd(end, ofs, point);
-		tracefunc(&steptrace, org, playerHeadProneMins, playerHeadProneMaxs, point, ignoreent, tracemask);
-		if (!steptrace.allsolid && !steptrace.startsolid &&
-		    steptrace.fraction > trace->fraction)
-		{
-			// the step trace did better -- use it instead
-			*trace = steptrace;
-		}
-	}
+	tracefunc(trace, start, mins, maxs, point, ignoreent, tracemask);
 }
 
 /**
@@ -412,62 +382,47 @@ void PM_TraceHead(trace_t *trace, vec3_t start, vec3_t end, trace_t *bodytrace, 
  * @param[in] start
  * @param[in] end
  */
-void PM_TraceAllParts(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end, qboolean allowAdjust, qboolean checkStepping)
+void PM_TraceAllParts(trace_t *trace, float *legsOffset, vec3_t start, vec3_t end)
 {
-	trace_t bodytrace;
-
-	pm->trace(&bodytrace, start, pm->mins, pm->maxs, end, pm->ps->clientNum, pm->tracemask);
-
-	*trace = bodytrace;
+	pm->trace(trace, start, pm->mins, pm->maxs, end, pm->ps->clientNum, pm->tracemask);
 
 	// legs and head
-	if (pm->ps->eFlags & (EF_PRONE | EF_DEAD))
+	if ((pm->ps->eFlags & EF_PRONE) ||
+	    (pm->ps->eFlags & EF_DEAD))
 	{
+
 		trace_t  legtrace;
 		trace_t  headtrace;
 		qboolean adjust = qfalse;
 
-		PM_TraceLegs(&legtrace, legsOffset, start, end, &bodytrace,
+		PM_TraceLegs(&legtrace, legsOffset, start, end, trace,
 		             pm->ps->viewangles, pm->trace, pm->ps->clientNum,
-		             pm->tracemask, checkStepping);
+		             pm->tracemask);
 
 		if (legtrace.fraction < trace->fraction ||
 		    legtrace.startsolid ||
 		    legtrace.allsolid)
 		{
-			if (pm->debugLevel > 3)
-			{
-				Com_Printf("%i:legs collide\n", c_pmove);
-			}
 
 			*trace = legtrace;
 			adjust = qtrue;
 		}
 
-		PM_TraceHead(&headtrace, start, end, &bodytrace,
+		PM_TraceHead(&headtrace, start, end, trace,
 		             pm->ps->viewangles, pm->trace, pm->ps->clientNum,
-		             pm->tracemask, checkStepping);
+		             pm->tracemask);
 
 		if (headtrace.fraction < trace->fraction ||
 		    headtrace.startsolid ||
 		    headtrace.allsolid)
 		{
-			if (pm->debugLevel > 3)
-			{
-				Com_Printf("%i:head collide\n", c_pmove);
-			}
 
 			*trace = headtrace;
 			adjust = qtrue;
 		}
 
-		if (allowAdjust && adjust)
+		if (adjust)
 		{
-			if (pm->debugLevel)
-			{
-				Com_Printf("%i:adjust\n", c_pmove);
-			}
-
 			VectorSubtract(end, start, trace->endpos);
 			VectorMA(start, trace->fraction, trace->endpos,
 			         trace->endpos);
@@ -481,9 +436,9 @@ void PM_TraceAllParts(trace_t *trace, float *legsOffset, vec3_t start, vec3_t en
  * @param[in] start
  * @param[in] end
  */
-void PM_TraceAll(trace_t *trace, vec3_t start, vec3_t end, qboolean allowAdjust, qboolean checkStepping)
+void PM_TraceAll(trace_t *trace, vec3_t start, vec3_t end)
 {
-	PM_TraceAllParts(trace, NULL, start, end, allowAdjust, checkStepping);
+	PM_TraceAllParts(trace, NULL, start, end);
 }
 
 /**
@@ -916,7 +871,7 @@ static qboolean PM_CheckProne(void)
 			pm->maxs[2] = pm->ps->crouchMaxZ;
 
 			pm->ps->eFlags |= EF_PRONE;
-			PM_TraceAll(&trace, pm->ps->origin, pm->ps->origin, qfalse, qtrue);
+			PM_TraceAll(&trace, pm->ps->origin, pm->ps->origin);
 			pm->ps->eFlags &= ~EF_PRONE;
 
 			if (PM_PRONEDELAY)
@@ -955,7 +910,7 @@ static qboolean PM_CheckProne(void)
 			pm->maxs[2] = pm->ps->crouchMaxZ;
 
 			pm->ps->eFlags &= ~EF_PRONE;
-			PM_TraceAll(&trace, pm->ps->origin, pm->ps->origin, qfalse, qtrue);
+			PM_TraceAll(&trace, pm->ps->origin, pm->ps->origin);
 			pm->ps->eFlags |= EF_PRONE;
 
 			if (trace.fraction == 1.0f)
@@ -1009,7 +964,7 @@ static qboolean PM_CheckProne(void)
 		// it appears that 12 is the magic number
 		// for the minimum maxs[2] that prevents
 		// player from getting stuck into the world.
-		pm->maxs[2]        = PRONE_BODYHEIGHT_BBOX;
+		pm->maxs[2]        = 12;
 		pm->ps->viewheight = PRONE_VIEWHEIGHT;
 
 		return qtrue;
@@ -1403,24 +1358,6 @@ static void PM_DeadMove(void)
 {
 	float forward;
 
-	// push back from ladder
-	if (pm->ps->pm_flags & PMF_LADDER)
-	{
-		float  angle;
-		vec3_t flatforward;
-
-		angle          = DEG2RAD(pm->ps->viewangles[YAW]);
-		flatforward[0] = cos(angle);
-		flatforward[1] = sin(angle);
-		flatforward[2] = 0;
-
-		VectorMA(pm->ps->origin, -32, flatforward, pm->ps->origin);
-
-		PM_StepSlideMove(qtrue);
-
-		pm->ps->pm_flags &= ~PMF_LADDER;
-	}
-
 	if (!pml.walking)
 	{
 		return;
@@ -1691,14 +1628,14 @@ static int PM_CorrectAllSolid(trace_t *trace)
 				point[0] += (float) i;
 				point[1] += (float) j;
 				point[2] += (float) k;
-				PM_TraceAll(trace, point, point, qfalse, qfalse);
+				PM_TraceAll(trace, point, point);
 				if (!trace->allsolid)
 				{
 					point[0] = pm->ps->origin[0];
 					point[1] = pm->ps->origin[1];
 					point[2] = pm->ps->origin[2] - 0.25f;
 
-					PM_TraceAll(trace, pm->ps->origin, point, qfalse, qfalse);
+					PM_TraceAll(trace, pm->ps->origin, point);
 					pml.groundTrace = *trace;
 					return qtrue;
 				}
@@ -1734,7 +1671,7 @@ static void PM_GroundTraceMissed(void)
 		VectorCopy(pm->ps->origin, point);
 		point[2] -= 64;
 
-		PM_TraceAll(&trace, pm->ps->origin, point, qtrue, qfalse);
+		PM_TraceAll(&trace, pm->ps->origin, point);
 		if (trace.fraction == 1.0f)
 		{
 			if (pm->cmd.forwardmove >= 0)
@@ -1782,7 +1719,7 @@ static void PM_GroundTrace(void)
 		point[2] = pm->ps->origin[2] - 0.25f;
 	}
 
-	PM_TraceAllParts(&trace, &pm->pmext->proneLegsOffset, pm->ps->origin, point, qfalse, qfalse);
+	PM_TraceAllParts(&trace, &pm->pmext->proneLegsOffset, pm->ps->origin, point);
 	pml.groundTrace = trace;
 
 	// do something corrective if the trace starts in a solid...
@@ -1961,7 +1898,7 @@ static void PM_CheckDuck(void)
 
 			// try to stand up
 			pm->maxs[2] = pm->ps->maxs[2];
-			PM_TraceAll(&trace, pm->ps->origin, pm->ps->origin, qfalse, qtrue);
+			PM_TraceAll(&trace, pm->ps->origin, pm->ps->origin);
 			if (trace.fraction == 1.0f)
 			{
 				pm->ps->pm_flags &= ~PMF_DUCKED;
@@ -2081,7 +2018,7 @@ static void PM_Footsteps(void)
 
 		if (pm->ps->eFlags & EF_PRONE)
 		{
-			if (pm->ps->eFlags & EF_TALK && !(GetWeaponTableData(pm->ps->weapon)->type & (WEAPON_TYPE_SET | WEAPON_TYPE_SCOPED)))
+			if (pm->ps->eFlags & EF_TALK)
 			{
 				animResult = BG_AnimScriptAnimation(pm->ps, pm->character->animModelInfo, ANIM_MT_RADIOPRONE, qtrue);
 			}
@@ -2092,7 +2029,7 @@ static void PM_Footsteps(void)
 		}
 		else if (pm->ps->pm_flags & PMF_DUCKED)
 		{
-			if (pm->ps->eFlags & EF_TALK && !(GetWeaponTableData(pm->ps->weapon)->type & (WEAPON_TYPE_SET | WEAPON_TYPE_SCOPED)))
+			if (pm->ps->eFlags & EF_TALK)
 			{
 				animResult = BG_AnimScriptAnimation(pm->ps, pm->character->animModelInfo, ANIM_MT_RADIOCR, qtrue);
 			}
@@ -2104,7 +2041,7 @@ static void PM_Footsteps(void)
 
 		if (animResult < 0)
 		{
-			if (pm->ps->eFlags & EF_TALK && !(GetWeaponTableData(pm->ps->weapon)->type & (WEAPON_TYPE_SET | WEAPON_TYPE_SCOPED)))
+			if (pm->ps->eFlags & EF_TALK)
 			{
 				animResult = BG_AnimScriptAnimation(pm->ps, pm->character->animModelInfo, ANIM_MT_RADIO, qtrue);
 			}
@@ -2445,7 +2382,7 @@ static void PM_BeginWeaponChange(weapon_t oldWeapon, weapon_t newWeapon, qboolea
 	// don't allow another weapon switch when we're still swapping alt weap, to prevent animation breaking
 	// there we check the value of the animation to prevent any switch during raising and dropping alt weapon
 	// until the animation is ended
-	if (GetWeaponTableData(oldWeapon)->weapAlts && pm->ps->weaponstate == WEAPON_RAISING &&
+	if (GetWeaponTableData(oldWeapon)->weapAlts &&
 	    ((pm->ps->weapAnim & ~ANIM_TOGGLEBIT) == WEAP_ALTSWITCHFROM || (pm->ps->weapAnim & ~ANIM_TOGGLEBIT) == WEAP_ALTSWITCHTO))
 	{
 		return;
@@ -3128,7 +3065,6 @@ static qboolean PM_CheckGrenade()
 		}
 		else if ((pm->cmd.buttons & BUTTON_ATTACK) && !(pm->ps->eFlags & EF_PRONE_MOVING))
 		{
-			BG_SetConditionBitFlag(pm->ps->clientNum, ANIM_COND_GEN_BITFLAG, ANIM_BITFLAG_HOLDING);
 			return qtrue;
 		}
 	}
@@ -3137,26 +3073,10 @@ static qboolean PM_CheckGrenade()
 		// keep dynamite in hand until fire button is released
 		if ((pm->cmd.buttons & BUTTON_ATTACK) && !(pm->ps->eFlags & EF_PRONE_MOVING) && weaponstateFiring && !pm->ps->weaponTime)
 		{
-			BG_ClearConditionBitFlag(pm->ps->clientNum, ANIM_COND_GEN_BITFLAG, ANIM_BITFLAG_HOLDING);
 			return qtrue;
 		}
 	}
 
-	if (BG_GetConditionBitFlag(pm->ps->clientNum, ANIM_COND_GEN_BITFLAG, ANIM_BITFLAG_HOLDING))
-	{
-		if (pm->ps->eFlags & EF_PRONE)
-		{
-			BG_AnimScriptEvent(pm->ps, pm->character->animModelInfo, ANIM_ET_FIREWEAPONPRONE,
-			                   GetWeaponTableData(pm->ps->weapon)->firingMode & WEAPON_FIRING_MODE_AUTOMATIC, qtrue);
-		}
-		else
-		{
-			BG_AnimScriptEvent(pm->ps, pm->character->animModelInfo, ANIM_ET_FIREWEAPON,
-			                   GetWeaponTableData(pm->ps->weapon)->firingMode & WEAPON_FIRING_MODE_AUTOMATIC, qtrue);
-		}
-	}
-
-	BG_ClearConditionBitFlag(pm->ps->clientNum, ANIM_COND_GEN_BITFLAG, ANIM_BITFLAG_HOLDING);
 	return qfalse;
 }
 
@@ -3591,7 +3511,7 @@ static void PM_Weapon(void)
 
 			pm->ps->weaponDelay = GetWeaponTableData(pm->ps->weapon)->fireDelayTime;
 		}
-		else if (!GetWeaponTableData(pm->ps->weapon)->grenadeTime)
+		else
 		{
 			if (pm->ps->eFlags & EF_PRONE)
 			{
@@ -3730,7 +3650,7 @@ static void PM_Weapon(void)
 
 	// weapon firing animation
 	// FG42 is exclude because the continue animation don't look great with it (no recoil, look stuck)
-	if ((GetWeaponTableData(pm->ps->weapon)->firingMode & WEAPON_FIRING_MODE_AUTOMATIC) && pm->ps->weapon != WP_FG42 && pm->ps->weapon != WP_FG42_SCOPE)
+	if ((GetWeaponTableData(pm->ps->weapon)->firingMode & WEAPON_FIRING_MODE_AUTOMATIC) && pm->ps->weapon != WP_FG42 && pm->ps->weapon != WP_FG42SCOPE)
 	{
 		PM_ContinueWeaponAnim(weapattackanim);
 	}
@@ -3753,7 +3673,7 @@ static void PM_Weapon(void)
 	// handle case depending of player skill and position for weapon recoil
 	if (GetWeaponTableData(pm->ps->weapon)->type & WEAPON_TYPE_SCOPED)
 	{
-		if (pm->ps->weapon == WP_FG42_SCOPE)
+		if (pm->ps->weapon == WP_FG42SCOPE)
 		{
 			if (pm->skill[SK_MILITARY_INTELLIGENCE_AND_SCOPED_WEAPONS] >= 3)
 			{
@@ -4037,7 +3957,7 @@ void PM_UpdateLean(playerState_t *ps, usercmd_t *cmd, pmove_t *tpm)
 
 /**
  * @brief This can be used as another entry point when only the viewangles
- * are being updated instead of a full move
+ * are being updated isntead of a full move
  *
  * @param[in,out] ps
  * @param[in,out] pmext
@@ -4046,9 +3966,9 @@ void PM_UpdateLean(playerState_t *ps, usercmd_t *cmd, pmove_t *tpm)
  *
  * @note Any changes to mounted/prone view should be duplicated in BotEntityWithinView()
  *
- * @note Unused trace parameter
+ * @note Tnused trace parameter
  */
-void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, void (trace) (trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask), int tracemask)                    //   modified
+void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, void(trace) (trace_t *results, const vec3_t start, const vec3_t mins, const vec3_t maxs, const vec3_t end, int passEntityNum, int contentMask), int tracemask)                  //   modified
 {
 	short  temp;
 	int    i;
@@ -4423,39 +4343,26 @@ void PM_UpdateViewAngles(playerState_t *ps, pmoveExt_t *pmext, usercmd_t *cmd, v
 			ps->delta_angles[PITCH] = ANGLE2SHORT(ps->viewangles[PITCH]) - cmd->angles[PITCH];
 		}
 
-		// Check if we rotated into a wall with our legs or head, if so, undo yaw
+		// Check if we rotated into a wall with our legs, if so, undo yaw
 		if (ps->viewangles[YAW] != oldYaw)
 		{
 			// see if we have the space to go prone
-			// we know our main body isn't in a solid, check for our legs then head
+			// we know our main body isn't in a solid, check for our legs
 
 			// bugfix - use supplied trace - pm may not be set
-			PM_TraceAllParts(&traceres, &pmext->proneLegsOffset, ps->origin, ps->origin, qfalse, qfalse);
+			PM_TraceLegs(&traceres, &pmext->proneLegsOffset, ps->origin, ps->origin, NULL, ps->viewangles, pm->trace, ps->clientNum, tracemask);
 
 			if (traceres.allsolid /* && trace.entityNum >= MAX_CLIENTS */)
 			{
-				// bugfix - use supplied trace - pm may not be set
-				PM_TraceAllParts(&traceres, &pmext->proneLegsOffset, ps->origin, ps->origin, qfalse, qtrue);
-
-				if (traceres.allsolid /* && trace.entityNum >= MAX_CLIENTS */)
-				{
-					if (pm->debugLevel)
-					{
-						Com_Printf("%i:can't rotate\n", c_pmove);
-					}
-
-					// starting in a solid, no space
-					ps->viewangles[YAW]   = oldYaw;
-					ps->delta_angles[YAW] = ANGLE2SHORT(ps->viewangles[YAW]) - cmd->angles[YAW];
-
-					return;
-				}
-
-				PM_StepSlideMove(qtrue);
+				// starting in a solid, no space
+				ps->viewangles[YAW]   = oldYaw;
+				ps->delta_angles[YAW] = ANGLE2SHORT(ps->viewangles[YAW]) - cmd->angles[YAW];
 			}
-
-			// all fine
-			ps->delta_angles[YAW] = newDeltaAngle;
+			else
+			{
+				// all fine
+				ps->delta_angles[YAW] = newDeltaAngle;
+			}
 		}
 	}
 }

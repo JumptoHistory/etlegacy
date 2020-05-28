@@ -277,7 +277,7 @@ FILE *Sys_FOpen(const char *ospath, const char *mode)
 	}
 	else if (*mode == 'a')
 	{
-		oflag |= O_WRONLY | O_CREAT | O_APPEND;
+		oflag |= O_WRONLY | O_APPEND;
 	}
 	else
 	{
@@ -294,7 +294,7 @@ FILE *Sys_FOpen(const char *ospath, const char *mode)
 			Com_Printf("Sys_FOpen: first stat('%s')  failed: errno %d\n", ospath, errno);
 			return NULL;
 		}
-		else if (*mode == 'r')
+		else if (*mode != 'w')
 		{
 			return NULL;
 		}
@@ -557,20 +557,12 @@ char **Sys_ListFiles(const char *directory, const char *extension, const char *f
 
 		if (invalid)
 		{
-			int error;
-
-			error = remove(va("%s%c%s", directory, PATH_SEP, d->d_name));
-
-			if (error != 0)
-			{
-				Com_Printf(S_COLOR_RED "ERROR: cannot delete '%s'.\n", d->d_name);
-			}
-
+			remove(va("%s%c%s", directory, PATH_SEP, d->d_name));
 #ifdef DEDICATED
 			Sys_Error("Invalid character in file name '%s'. The file has been removed. Start the server again.", d->d_name);
 #else
 			Cvar_Set("com_missingFiles", "");
-			Com_Error(ERR_DROP, "Invalid file name detected and removed\nFile \"%s\" contains an invalid character for ET: Legacy file structure.\nSome admins take advantage of this to ensure their menu loads last.\nThe file has been removed.", d->d_name);
+			Com_Error(ERR_DROP, "Invalid file name detected & removed\nFile \"%s\" did contain an invalid character for ET: L file structure.\nSome admins take advantage of this to ensure their menu loads last.\nThe file has been removed.", d->d_name);
 #endif
 		}
 
@@ -1089,14 +1081,11 @@ void Sys_PlatformInit(void)
 {
 	const char *term = getenv("TERM");
 
-// don't set signal handlers for anything that will generate coredump (in DEBUG builds)
-#if !defined(ETLEGACY_DEBUG)
-	signal(SIGTRAP, Sys_SigHandler);
-	signal(SIGBUS, Sys_SigHandler);
-#endif
 	signal(SIGHUP, Sys_SigHandler);
-	signal(SIGABRT, Sys_SigHandler);
 	signal(SIGQUIT, Sys_SigHandler);
+	signal(SIGTRAP, Sys_SigHandler);
+	signal(SIGABRT, Sys_SigHandler);
+	signal(SIGBUS, Sys_SigHandler);
 
 	stdinIsATTY = isatty(STDIN_FILENO) &&
 	              !(term && (!strcmp(term, "raw") || !strcmp(term, "dumb")));
@@ -1154,7 +1143,7 @@ qboolean Sys_DllExtension(const char *name)
 	}
 
 	// Check for format of filename.so.1.2.3
-	p = strstr(name, DLL_EXT ".");
+	p = strstr(name, DLL_EXT "." );
 
 	if (p)
 	{

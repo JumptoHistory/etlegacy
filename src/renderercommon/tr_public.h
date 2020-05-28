@@ -193,7 +193,7 @@ typedef struct
 #else
 	void * (*Hunk_Alloc)(unsigned int size, ha_pref pref);
 #endif
-	void * (*Hunk_AllocateTempMemory)(size_t size);
+	void * (*Hunk_AllocateTempMemory)(unsigned int size);
 	void (*Hunk_FreeTempMemory)(void *block);
 
 	/// dynamic memory allocator for things that need to be freed
@@ -263,6 +263,7 @@ typedef struct
 	void (*GLimp_Shutdown)(void);
 	void (*GLimp_SwapFrame)(void);
 	void (*GLimp_SetGamma)(unsigned char red[256], unsigned char green[256], unsigned char blue[256]);
+	void (*GLimp_GetExtraGLConfigVariables)(glconfigExt_t *glConfigExt);
 } refimport_t;
 
 /// this is the only function actually exported at the linker level

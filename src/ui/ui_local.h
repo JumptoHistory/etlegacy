@@ -486,10 +486,7 @@ typedef struct serverStatus_s
 	int currentServer;
 	int displayServers[MAX_DISPLAY_SERVERS];
 	int numDisplayServers;
-	int numIncompatibleServers;
-	int numInvalidServers;
 	int numPlayersOnServers;
-	int numHumansOnServers;
 	int nextDisplayRefresh;
 	qhandle_t currentServerPreview;
 	int currentServerCinematic;
@@ -535,7 +532,7 @@ typedef struct
 {
 	displayContextDef_t uiDC;
 
-	int etLegacyClient;
+	int legacyClient;
 
 	int characterCount;
 	characterInfo characterList[MAX_HEADS];

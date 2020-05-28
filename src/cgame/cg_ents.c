@@ -666,50 +666,50 @@ static void CG_Item(centity_t *cent)
 
 	if (cg_simpleItems.integer == 1 || (cg_simpleItems.integer > 1 && item->giType != IT_TEAM))
 	{
-		polyVert_t   temp[4];
-		polyVert_t   quad[4];
-		qhandle_t    simpleItemShader = 0;
-		weaponInfo_t *weaponInfo      = NULL;
-		vec3_t       origin;
-		vec4_t       accentColor;
-		float        simpleItemScaleX = 1.f;
-		float        simpleItemScaleY = 1.f;
+		polyVert_t    temp[4];
+		polyVert_t    quad[4];
+		qhandle_t     simpleItemShader = 0;
+		weaponInfo_t  *weaponInfo      = NULL;
+		vec3_t        origin;
+		unsigned char accentColor[4];
+		float         simpleItemScaleX = 1.f;
+		float         simpleItemScaleY = 1.f;
 
 		VectorCopy(cent->lerpOrigin, origin);
-		VectorCopy(colorWhite, accentColor); // default white color
+		Vector4Set(accentColor, 255, 255, 255, 255); // default white color
 
 		switch (item->giType)
 		{
 		case IT_AMMO:
 			weaponInfo = &cg_weapons[WP_AMMO];
-			Vector4Set(accentColor, 1.f, 1.f, 0.09f, 0.5f);
+			Vector4Set(accentColor, 255, 255, 25, 127);
 			break;
 		case IT_HEALTH:
 			weaponInfo = &cg_weapons[WP_MEDKIT];
-			Vector4Set(accentColor, 0.09f, 1.f, 0.09f, 0.5f);
+			Vector4Set(accentColor, 25, 255, 25, 127);
 			break;
 		case IT_WEAPON:
 			weaponInfo = &cg_weapons[item->giWeapon];
 			// ammo box
 			if (item->giWeapon == WP_AMMO)
 			{
-				Vector4Set(accentColor, 1.f, 1.f, 0.09f, 0.5f);
+				Vector4Set(accentColor, 255, 255, 25, 127);
 			}
 			else
 			{
-				if (COM_BitCheck(cg.snap->ps.weapons, item->giWeapon) ||
+				if (cgs.clientinfo[cg.snap->ps.clientNum].weapon == item->giWeapon ||
 				    (cgs.clientinfo[cg.snap->ps.clientNum].cls == PC_SOLDIER && cgs.clientinfo[cg.snap->ps.clientNum].skill[SK_HEAVY_WEAPONS] >= 4 &&
 				     (cgs.clientinfo[cg.snap->ps.clientNum].secondaryweapon == item->giWeapon)))
 				{
-					Vector4Set(accentColor, 1.f, 1.f, 0.09f, 1.f);
+					Vector4Set(accentColor, 255, 255, 25, 255);
 				}
 				else if (CG_PlayerCanPickupWeapon(cg.snap->ps.clientNum, item->giWeapon))
 				{
-					Vector4Set(accentColor, 0.75f, 0.75f, 0.75f, 1.f);
+					Vector4Set(accentColor, 192, 192, 192, 255);
 				}
 				else
 				{
-					Vector4Set(accentColor, 0.33f, 0.33f, 0.33f, 1.f);
+					Vector4Set(accentColor, 85, 85, 85, 255);
 				}
 			}
 			break;
@@ -718,11 +718,11 @@ static void CG_Item(centity_t *cent)
 			origin[2]       += 5 + (float)sin((cg.time + 1000) * 0.005) * 3;
 			if (item->giPowerUp == PW_BLUEFLAG)
 			{
-				Vector4Set(accentColor, 1.f, 0, 0, 1.f);
+				Vector4Set(accentColor, 255, 0, 0, 255);
 			}
 			else if (item->giPowerUp == PW_REDFLAG)
 			{
-				Vector4Set(accentColor, 0, 0.5f, 1.f, 1.f);
+				Vector4Set(accentColor, 0, 127, 255, 255);
 			}
 			break;
 		case IT_BAD:
@@ -734,15 +734,7 @@ static void CG_Item(centity_t *cent)
 		if (cgs.clientinfo[cg.snap->ps.clientNum].team == TEAM_SPECTATOR &&
 		    item->giType == IT_WEAPON && item->giWeapon != WP_AMMO)
 		{
-			Vector4Set(accentColor, 0.73f, 0.78f, 0.79f, 1.f);
-		}
-
-		// remove colour when item is sinking
-		if (item->giType != IT_TEAM && (es->time - 1000) < cg.time)
-		{
-			vec4_t fadeColor;
-			Vector4Set(fadeColor, 0.33f, 0.33f, 0.33f, 1.f);
-			VectorCopy(CG_LerpColorWithAttack(accentColor, fadeColor, (es->time - 1000), 1000, 0), accentColor);
+			Vector4Set(accentColor, 188, 200, 202, 255);
 		}
 
 		if (weaponInfo)
@@ -778,7 +770,6 @@ static void CG_Item(centity_t *cent)
 			Vector2Set(quad[2].st, 1.f, 1.f);
 			Vector2Set(quad[3].st, 0.f, 1.f);
 			// set color modulation
-			Vector4Scale(accentColor, 255.f, accentColor);
 			Vector4Copy(accentColor, quad[0].modulate);
 			Vector4Copy(accentColor, quad[1].modulate);
 			Vector4Copy(accentColor, quad[2].modulate);
@@ -1226,7 +1217,7 @@ static void CG_Missile(centity_t *cent)
 			}
 
 			// add dynamite counter to floating string list
-			if (cgs.clientinfo[cg.clientNum].shoutcaster)
+			if (cgs.clientinfo[cg.clientNum].team == TEAM_SPECTATOR && cgs.clientinfo[cg.clientNum].shoutcaster)
 			{
 				timer = va("%i", 30 - (cg.time - cent->currentState.effect1Time) / 1000);
 				CG_EntityFloatText(cent, timer, 8);
@@ -1291,16 +1282,7 @@ static void CG_Missile(centity_t *cent)
 				}
 				else if (cgs.clientinfo[cg.clientNum].shoutcaster)
 				{
-					if (cent->currentState.modelindex2)
-					{
-						// team or spotted landmine
-						CG_DrawMineMarkerFlag(cent, &ent, weapon);
-					}
-					else
-					{
-						// unspotted landmine
-						CG_DrawLandmine(cent, &ent);
-					}
+					CG_DrawLandmine(cent, &ent);
 				}
 				else if (!cent->currentState.modelindex2)
 				{
@@ -1332,8 +1314,8 @@ static void CG_Missile(centity_t *cent)
 			{
 				if (cgs.clientinfo[cg.clientNum].shoutcaster)
 				{
-					// shoutcasters can see team landmines
-					CG_DrawMineMarkerFlag(cent, &ent, weapon);
+					// shoutcasters can see landmines
+					CG_DrawLandmine(cent, &ent);
 				}
 				else
 				{

@@ -532,9 +532,8 @@ void G_RunMissile(gentity_t *ent)
 			}
 			else
 			{
-				float skyFloor, skyHeight, groundFloor;
+				float skyHeight, groundFloor;
 
-				skyFloor    = BG_GetTracemapSkyGroundFloor();   // lowest sky height point
 				skyHeight   = BG_GetSkyHeightAtPoint(origin);
 				groundFloor = BG_GetTracemapGroundFloor();
 
@@ -554,10 +553,9 @@ void G_RunMissile(gentity_t *ent)
 				}
 
 				// are we in worldspace again - or did we hit a ceiling from the outside of the world
-				if (skyHeight == MAX_MAP_SIZE && origin[2] >= skyFloor)
+				if (skyHeight == MAX_MAP_SIZE && ent->r.currentOrigin[2] <= origin[2])
 				{
 					G_RunThink(ent);
-
 					VectorCopy(origin, ent->r.currentOrigin);   // keep the previous origin to don't go too far
 					VectorCopy(angle, ent->r.currentAngles);
 
@@ -578,41 +576,34 @@ void G_RunMissile(gentity_t *ent)
 				ent->count2 = 1;
 			}
 		}
-		else if (!ent->count2 && BG_GetSkyHeightAtPoint(origin) - BG_GetGroundHeightAtPoint(origin) > 1024)
+		else if (!ent->count2 && BG_GetSkyHeightAtPoint(origin) - BG_GetGroundHeightAtPoint(origin) > 512)
 		{
-			ent->count2 = ent->r.currentOrigin[2] > origin[2];
+			vec3_t delta;
+
+			VectorSubtract(origin, ent->r.currentOrigin, delta);
+			if (delta[2] < 0)
+			{
+				ent->count2 = 1;
+			}
 		}
-		else if ((ent->count2 == 1 || ent->count2 == 2) && !(ent->s.eFlags & (EF_BOUNCE | EF_BOUNCE_HALF)))
+		else if (ent->count2 == 1 && !(ent->s.eFlags & (EF_BOUNCE | EF_BOUNCE_HALF))
+		         && ent->r.currentOrigin[2] > origin[2]
+		         && origin[2] - BG_GetGroundHeightAtPoint(origin) < 1024)
 		{
 			vec3_t  impactpos;
 			trace_t mortar_tr;
 
-			if (ent->count2 == 1)
-			{
-				VectorSubtract(origin, ent->r.currentOrigin, impactpos);
-				VectorMA(origin, 16, impactpos, impactpos);
-
-				trap_Trace(&mortar_tr, origin, ent->r.mins, ent->r.maxs, impactpos, ent->r.ownerNum, ent->clipmask);
-
-				if (mortar_tr.fraction != 1.f && !(mortar_tr.surfaceFlags & SURF_NOIMPACT))
-				{
-					// missile go down, play the falling sound
-					G_AddEvent(ent, EV_MISSILE_FALLING, 0);
-					ent->count2 = 2;
-				}
-			}
-
 			VectorSubtract(origin, ent->r.currentOrigin, impactpos);
-			VectorMA(origin, 8, impactpos, impactpos);
+			VectorMA(origin, MAX_TRACE, impactpos, impactpos);
 
 			trap_Trace(&mortar_tr, origin, ent->r.mins, ent->r.maxs, impactpos, ent->r.ownerNum, ent->clipmask);
 
 			if (mortar_tr.fraction != 1.f && !(mortar_tr.surfaceFlags & SURF_NOIMPACT))
 			{
 				G_AddEvent(ent, EV_MORTAR_IMPACT, 0);
-				VectorCopy(mortar_tr.endpos, ent->s.origin2);           // impact point
+				VectorCopy(mortar_tr.endpos, ent->s.origin2);       // impact point
 
-				ent->count2 = 3;                                        // missile is about to impact, no more check in worldspace are required
+				ent->count2 = 2;                                    // missile is about to impact, no more check in worldspace are required
 			}
 		}
 	}

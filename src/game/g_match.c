@@ -397,21 +397,13 @@ void G_addStatsHeadShot(gentity_t *attacker, meansOfDeath_t mod)
  * @param[in] refEnt
  * @return
  */
-char *G_createStats(gentity_t *ent)
+char *G_createStats(gentity_t *refEnt)
 {
 	unsigned int i, dwWeaponMask = 0, dwSkillPointMask = 0;
 	char         strWeapInfo[MAX_STRING_CHARS]  = { 0 };
 	char         strSkillInfo[MAX_STRING_CHARS] = { 0 };
-	gclient_t    *cl;
 
-	if (!ent || !ent->client)
-	{
-		return NULL;
-	}
-
-	cl = ent->client;
-
-	if (cl->pers.connected != CON_CONNECTED)
+	if (!refEnt)
 	{
 		return NULL;
 	}
@@ -420,14 +412,14 @@ char *G_createStats(gentity_t *ent)
 	// The client also expects stats when kills are above 0
 	for (i = WS_KNIFE; i < WS_MAX; i++)
 	{
-		if (ent->client->sess.aWeaponStats[i].atts || ent->client->sess.aWeaponStats[i].hits ||
-		    ent->client->sess.aWeaponStats[i].deaths || ent->client->sess.aWeaponStats[i].kills)
+		if (refEnt->client->sess.aWeaponStats[i].atts || refEnt->client->sess.aWeaponStats[i].hits ||
+		    refEnt->client->sess.aWeaponStats[i].deaths || refEnt->client->sess.aWeaponStats[i].kills)
 		{
 			dwWeaponMask |= (1 << i);
 			Q_strcat(strWeapInfo, sizeof(strWeapInfo), va(" %d %d %d %d %d",
-			                                              ent->client->sess.aWeaponStats[i].hits, ent->client->sess.aWeaponStats[i].atts,
-			                                              ent->client->sess.aWeaponStats[i].kills, ent->client->sess.aWeaponStats[i].deaths,
-			                                              ent->client->sess.aWeaponStats[i].headshots));
+			                                              refEnt->client->sess.aWeaponStats[i].hits, refEnt->client->sess.aWeaponStats[i].atts,
+			                                              refEnt->client->sess.aWeaponStats[i].kills, refEnt->client->sess.aWeaponStats[i].deaths,
+			                                              refEnt->client->sess.aWeaponStats[i].headshots));
 		}
 	}
 
@@ -436,54 +428,40 @@ char *G_createStats(gentity_t *ent)
 	if (dwWeaponMask != 0)
 	{
 		Q_strcat(strWeapInfo, sizeof(strWeapInfo), va(" %d %d %d %d %d %d %d %d %.1f",
-		                                              ent->client->sess.damage_given,
-		                                              ent->client->sess.damage_received,
-		                                              ent->client->sess.team_damage_given,
-		                                              ent->client->sess.team_damage_received,
-		                                              ent->client->sess.gibs,
-		                                              ent->client->sess.self_kills,
-		                                              ent->client->sess.team_kills,
-		                                              ent->client->sess.team_gibs,
-		                                              (ent->client->sess.time_axis + ent->client->sess.time_allies) == 0 ? 0 : 100.0 * ent->client->sess.time_played / (ent->client->sess.time_axis + ent->client->sess.time_allies)
+		                                              refEnt->client->sess.damage_given,
+		                                              refEnt->client->sess.damage_received,
+		                                              refEnt->client->sess.team_damage_given,
+		                                              refEnt->client->sess.team_damage_received,
+		                                              refEnt->client->sess.gibs,
+		                                              refEnt->client->sess.self_kills,
+		                                              refEnt->client->sess.team_kills,
+		                                              refEnt->client->sess.team_gibs,
+		                                              (refEnt->client->sess.time_axis + refEnt->client->sess.time_allies) == 0 ? 0 : 100.0 * refEnt->client->sess.time_played / (refEnt->client->sess.time_axis + refEnt->client->sess.time_allies)
 		                                              ));
 	}
 
 	// Add skillpoints as necessary
-	if ((g_gametype.integer == GT_WOLF_CAMPAIGN && g_xpSaver.integer) ||
-		(g_gametype.integer == GT_WOLF_CAMPAIGN && (g_campaigns[level.currentCampaign].current != 0 && !level.newCampaign)) ||
+	if ((g_gametype.integer == GT_WOLF_CAMPAIGN && (g_campaigns[level.currentCampaign].current != 0 && !level.newCampaign)) ||
 	    (g_gametype.integer == GT_WOLF_LMS && g_currentRound.integer != 0))
 	{
 		for (i = SK_BATTLE_SENSE; i < SK_NUM_SKILLS; i++)
 		{
-			if (ent->client->sess.skillpoints[i] != 0.f) // Skillpoints can be negative
+			if (refEnt->client->sess.skillpoints[i] != 0.f) // Skillpoints can be negative
 			{
 				dwSkillPointMask |= (1 << i);
-				Q_strcat(strSkillInfo, sizeof(strSkillInfo), va(" %d", (int)ent->client->sess.skillpoints[i]));
+				Q_strcat(strSkillInfo, sizeof(strSkillInfo), va(" %d", (int)refEnt->client->sess.skillpoints[i]));
 			}
 		}
 	}
-#ifdef FEATURE_PRESTIGE
-	else if (g_prestige.integer && g_gametype.integer != GT_WOLF_CAMPAIGN && g_gametype.integer != GT_WOLF_STOPWATCH && g_gametype.integer != GT_WOLF_LMS)
-	{
-		for (i = SK_BATTLE_SENSE; i < SK_NUM_SKILLS; i++)
-		{
-			if (ent->client->sess.skillpoints[i] != 0.f) // Skillpoints can be negative
-			{
-				dwSkillPointMask |= (1 << i);
-				Q_strcat(strSkillInfo, sizeof(strSkillInfo), va(" %d %d", (int)ent->client->sess.skillpoints[i], (int)(ent->client->sess.skillpoints[i] - ent->client->sess.startskillpoints[i])));
-			}
-		}
-	}
-#endif
 	else
 	{
 		for (i = SK_BATTLE_SENSE; i < SK_NUM_SKILLS; i++)
 		{
 			// current map XPs only
-			if ((ent->client->sess.skillpoints[i] - ent->client->sess.startskillpoints[i]) != 0.f) // Skillpoints can be negative
+			if ((refEnt->client->sess.skillpoints[i] - refEnt->client->sess.startskillpoints[i]) != 0.f) // Skillpoints can be negative
 			{
 				dwSkillPointMask |= (1 << i);
-				Q_strcat(strSkillInfo, sizeof(strSkillInfo), va(" %d", (int)(ent->client->sess.skillpoints[i] - ent->client->sess.startskillpoints[i])));
+				Q_strcat(strSkillInfo, sizeof(strSkillInfo), va(" %d", (int)(refEnt->client->sess.skillpoints[i] - refEnt->client->sess.startskillpoints[i])));
 			}
 		}
 	}
@@ -499,29 +477,21 @@ char *G_createStats(gentity_t *ent)
 		strSkillInfo[0]  = '\0';
 	}
 
-#if defined(FEATURE_RATING) && defined (FEATURE_PRESTIGE)
-	return(va("%d %d %d%s %d%s %.2f %.2f %d",
-#elif defined(FEATURE_RATING)
+#ifdef FEATURE_RATING
 	return(va("%d %d %d%s %d%s %.2f %.2f",
-#elif defined (FEATURE_PRESTIGE)
-	return(va("%d %d %d%s %d%s %d",
 #else
 	return (va("%d %d %d%s %d%s",
 #endif
-	          (int)(ent - g_entities),
-	          ent->client->sess.rounds,
+	          (int)(refEnt - g_entities),
+	          refEnt->client->sess.rounds,
 	          dwWeaponMask,
 	          strWeapInfo,
 	          dwSkillPointMask,
 	          strSkillInfo
 #ifdef FEATURE_RATING
 	          ,
-	          ent->client->sess.mu - 3 * ent->client->sess.sigma,
-	          ent->client->sess.mu - 3 * ent->client->sess.sigma - (ent->client->sess.oldmu - 3 * ent->client->sess.oldsigma)
-#endif
-#ifdef FEATURE_PRESTIGE
-	          ,
-	          ent->client->sess.prestige
+	          refEnt->client->sess.mu - 3 * refEnt->client->sess.sigma,
+	          refEnt->client->sess.mu - 3 * refEnt->client->sess.sigma - (refEnt->client->sess.oldmu - 3 * refEnt->client->sess.oldsigma)
 #endif
 	          ));
 }
@@ -555,9 +525,6 @@ void G_deleteStats(int nClient)
 	cl->sess.sigma    = SIGMA;
 	cl->sess.oldmu    = cl->sess.mu;
 	cl->sess.oldsigma = cl->sess.sigma;
-#endif
-#ifdef FEATURE_PRESTIGE
-	cl->sess.prestige = 0;
 #endif
 	cl->sess.startskillpoints[SK_BATTLE_SENSE]                             = 0;
 	cl->sess.startskillpoints[SK_EXPLOSIVES_AND_CONSTRUCTION]              = 0;
@@ -793,17 +760,9 @@ void G_printMatchInfo(gentity_t *ent)
 
 #ifdef FEATURE_RATING
 	// display map bias
-	if (g_skillRating.integer && g_gametype.integer != GT_WOLF_STOPWATCH && g_gametype.integer != GT_WOLF_LMS)
+	if (g_skillRating.integer > 1)
 	{
-		if (g_skillRating.integer > 1)
-		{
-			CP(va("sc \"\n^2Map bias: ^1%+.1f^7/^$%+.1f^7 pct\n^2Win prob: ^1%+.1f^7/^$%+.1f^7 pct\n\" 0",
-			      100.f * (level.mapProb - 0.5f), 100.f * (0.5f - level.mapProb), 100.f * level.axisProb, 100.f * level.alliesProb));
-		}
-		else
-		{
-			CP(va("sc \"\n^2Win prob: ^1%+.1f^7/^$%+.1f^7 pct\n\" 0", 100.f * level.axisProb, 100.f * level.alliesProb));
-		}
+		CP(va("sc \"\n^2Map bias: ^1%+.1f^7/^$%+.1f^7 pct\n\" 0", 100.f * (level.mapProb - 0.5f), 100.f * (0.5f - level.mapProb)));
 	}
 #endif
 
@@ -1003,6 +962,7 @@ int G_checkServerToggle(vmCvar_t *cv)
 void G_statsPrint(gentity_t *ent, int nType)
 {
 	const char *cmd;
+	char       arg[MAX_TOKEN_CHARS];
 
 	if (!ent || (ent->r.svFlags & SVF_BOT))
 	{
@@ -1032,8 +992,7 @@ void G_statsPrint(gentity_t *ent, int nType)
 	}
 	else
 	{
-		int  pid;
-                char arg[MAX_TOKEN_CHARS];
+		int pid;
 
 		// Find the player to poll stats.
 		trap_Argv(1, arg, sizeof(arg));

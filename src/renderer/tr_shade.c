@@ -208,6 +208,48 @@ static void R_DrawElements(int numIndexes, const glIndex_t *indexes)
 	}
 }
 
+static void R_DepthAtestDrawElements(shaderCommands_t *input, unsigned long stateBits)
+{
+	unsigned long depthAtest;
+
+	switch (stateBits & GLS_DEPTHMASK_ATEST_BITS)
+	{
+	case GLS_DEPTHMASK_ATEST_GT_0:
+		depthAtest = GLS_ATEST_GT_0;
+		break;
+	case GLS_DEPTHMASK_ATEST_GE_16:
+		depthAtest = GLS_ATEST_GE_16;
+		break;
+	case GLS_DEPTHMASK_ATEST_GE_32:
+		depthAtest = GLS_ATEST_GE_32;
+		break;
+	case GLS_DEPTHMASK_ATEST_GE_64:
+		depthAtest = GLS_ATEST_GE_64;
+		break;
+	case GLS_DEPTHMASK_ATEST_GE_128:
+		depthAtest = GLS_ATEST_GE_128;
+		break;
+	case GLS_DEPTHMASK_ATEST_GE_192:
+		depthAtest = GLS_ATEST_GE_192;
+		break;
+	case GLS_DEPTHMASK_ATEST_GE_224:
+		depthAtest = GLS_ATEST_GE_224;
+		break;
+	default:
+		etl_assert(0);
+	}
+
+	// draw to the depth buffer
+	qglColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+	GL_State(stateBits & ~GLS_ATEST_BITS | depthAtest | GLS_DEPTHMASK_TRUE);
+	R_DrawElements(input->numIndexes, input->indexes);
+	qglColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+	// draw to the color buffer
+	GL_State(stateBits & ~GLS_DEPTHMASK_TRUE);
+	R_DrawElements(input->numIndexes, input->indexes);
+}
+
 /*
 =============================================================
 SURFACE SHADERS
@@ -536,7 +578,14 @@ static void DrawMultitextured(shaderCommands_t *input, int stage)
 
 	R_BindAnimatedImage(&pStage->bundle[1]);
 
-	R_DrawElements(input->numIndexes, input->indexes);
+	if (pStage->stateBits & GLS_DEPTHMASK_ATEST_BITS)
+	{
+		R_DepthAtestDrawElements(input, pStage->stateBits);
+	}
+	else
+	{
+		R_DrawElements(input->numIndexes, input->indexes);
+	}
 
 	// disable texturing on TEXTURE1, then select TEXTURE0
 	//qglDisableClientState( GL_TEXTURE_COORD_ARRAY );
@@ -1380,24 +1429,26 @@ static void ComputeColors(shaderStage_t *pStage)
 	}
 
 	// fog adjustment for colors to fade out as fog increases
-	if (tess.fogNum && !tess.shader->noFog)
+	if (r_wolfFog->integer)
 	{
-		switch (pStage->adjustColorsForFog)
+		if (tess.fogNum && !tess.shader->noFog)
 		{
-		case ACFF_MODULATE_RGB:
-			RB_CalcModulateColorsByFog(( unsigned char * ) tess.svars.colors);
-			break;
-		case ACFF_MODULATE_ALPHA:
-			RB_CalcModulateAlphasByFog(( unsigned char * ) tess.svars.colors);
-			break;
-		case ACFF_MODULATE_RGBA:
-			RB_CalcModulateRGBAsByFog(( unsigned char * ) tess.svars.colors);
-			break;
-		case ACFF_NONE:
-			break;
+			switch (pStage->adjustColorsForFog)
+			{
+			case ACFF_MODULATE_RGB:
+				RB_CalcModulateColorsByFog(( unsigned char * ) tess.svars.colors);
+				break;
+			case ACFF_MODULATE_ALPHA:
+				RB_CalcModulateAlphasByFog(( unsigned char * ) tess.svars.colors);
+				break;
+			case ACFF_MODULATE_RGBA:
+				RB_CalcModulateRGBAsByFog(( unsigned char * ) tess.svars.colors);
+				break;
+			case ACFF_NONE:
+				break;
+			}
 		}
-	}
-}
+	}}
 
 /**
  * @brief ComputeTexCoords
@@ -1560,13 +1611,14 @@ void SetIteratorFog(void)
 }
 
 /**
- * @brief RB_IterateStagesGeneric
- * @param[in] input
- */
+* @brief RB_IterateStagesGeneric
+* @param[in] input
+*/
 static void RB_IterateStagesGeneric(shaderCommands_t *input)
 {
 	shaderStage_t *pStage;
 	int           stage;
+	unsigned int stateBits;
 
 	for (stage = 0; stage < MAX_SHADER_STAGES; stage++)
 	{
@@ -1587,7 +1639,7 @@ static void RB_IterateStagesGeneric(shaderCommands_t *input)
 		}
 
 		// do multitexture
-		if (pStage->bundle[1].image[0] != 0)
+		if (qglActiveTextureARB && pStage->bundle[1].image[0] != 0)
 		{
 			DrawMultitextured(input, stage);
 		}
@@ -1626,7 +1678,7 @@ static void RB_IterateStagesGeneric(shaderCommands_t *input)
 
 				if (fadeStart > tr.refdef.time)           // has not started to fade yet
 				{
-					GL_State(pStage->stateBits);
+					stateBits = pStage->stateBits;
 				}
 				else
 				{
@@ -1646,7 +1698,7 @@ static void RB_IterateStagesGeneric(shaderCommands_t *input)
 					tempState &= ~(GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS | GLS_DEPTHMASK_TRUE);
 					// set the blend to src_alpha, dst_one_minus_src_alpha
 					tempState |= (GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA);
-					GL_State(tempState);
+					stateBits = tempState;
 					GL_Cull(CT_FRONT_SIDED);
 					// modulate the alpha component of each vertex in the render list
 					for (i = 0; i < tess.numVertexes; i++)
@@ -1661,18 +1713,23 @@ static void RB_IterateStagesGeneric(shaderCommands_t *input)
 			// lightmap stages should be GL_ONE GL_ZERO so they can be seen
 			else if (r_lightMap->integer && (pStage->bundle[0].isLightmap || pStage->bundle[1].isLightmap))
 			{
-				unsigned int stateBits = (pStage->stateBits & ~(GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS)) |
-				                         (GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO);
-
-				GL_State(stateBits);
+				stateBits = (pStage->stateBits & ~(GLS_SRCBLEND_BITS | GLS_DSTBLEND_BITS)) |
+					(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO);
 			}
 			else
 			{
-				GL_State(pStage->stateBits);
+				stateBits = pStage->stateBits;
 			}
 
-			// draw
-			R_DrawElements(input->numIndexes, input->indexes);
+			if (pStage->stateBits & GLS_DEPTHMASK_ATEST_BITS)
+			{
+				R_DepthAtestDrawElements(input, stateBits);
+			}
+			else
+			{
+				GL_State(stateBits);
+				R_DrawElements(input->numIndexes, input->indexes);
+			}
 		}
 
 		// allow skipping out to show just lightmaps during development
@@ -1784,8 +1841,8 @@ void RB_StageIteratorGeneric(void)
 }
 
 /**
- * @brief RB_StageIteratorVertexLitTexture
- */
+* @brief RB_StageIteratorVertexLitTexture
+*/
 void RB_StageIteratorVertexLitTexture(void)
 {
 	shaderCommands_t *input  = &tess;
@@ -1818,13 +1875,20 @@ void RB_StageIteratorVertexLitTexture(void)
 
 	// call special shade routine
 	R_BindAnimatedImage(&tess.xstages[0]->bundle[0]);
-	GL_State(tess.xstages[0]->stateBits);
-	R_DrawElements(input->numIndexes, input->indexes);
+	if (tess.xstages[0]->stateBits & GLS_DEPTHMASK_ATEST_BITS)
+	{
+		R_DepthAtestDrawElements(input, tess.xstages[0]->stateBits);
+	}
+	else
+	{
+		GL_State(tess.xstages[0]->stateBits);
+		R_DrawElements(input->numIndexes, input->indexes);
+	}
 
 	// now do any dynamic lighting needed
 	//if ( tess.dlightBits && tess.shader->sort <= SS_OPAQUE )
 	if (tess.dlightBits && tess.shader->fogPass &&
-	    !(tess.shader->surfaceFlags & (SURF_NODLIGHT | SURF_SKY)))
+		!(tess.shader->surfaceFlags & (SURF_NODLIGHT | SURF_SKY)))
 	{
 		if (r_dynamicLight->integer == 2)
 		{

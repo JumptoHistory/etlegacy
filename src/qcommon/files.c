@@ -38,7 +38,10 @@
 
 #include "q_shared.h"
 #include "qcommon.h"
-#include "crypto/sha-1/sha1.h"
+
+#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
+#include "./crypto/sha-1/sha1.h"
+#endif
 
 #ifdef BUNDLED_MINIZIP
 #    include "unzip.h"
@@ -264,11 +267,11 @@ static cvar_t       *fs_gamedirvar;
 static searchpath_t *fs_searchpaths;
 #if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
 /**
-* @var fs_containerMount
-* @brief This enables a containerized directory where all downloadable content is stored,
-*        set on default mod server connect once the gamestate is received
+* @var fs_containerName
+* @brief This is a directory name where non secure downloadable content is stored,
+*        set on each server connect once the gamestate is received
 */
-static cvar_t *fs_containerMount;
+static cvar_t *fs_containerName;
 #endif
 
 /**
@@ -358,6 +361,12 @@ static char *fs_serverReferencedPakNames[MAX_SEARCH_PATHS];         ///< pk3 nam
 char lastValidBase[MAX_OSPATH];
 char lastValidGame[MAX_OSPATH];
 
+pack_t *fs_purePaks[2048];
+int fs_numPurePaks;
+
+// allow paks with certain checksums
+int fs_allowedCustomPaks[] = {94603189};
+
 #ifdef FS_MISSING
 FILE *missingFiles = NULL;
 #endif
@@ -386,9 +395,16 @@ qboolean FS_PakIsPure(pack_t *pack)
 	if (fs_numServerPaks)
 	{
 		int i;
-
 		for (i = 0 ; i < fs_numServerPaks ; i++)
 		{
+			int j;
+			for (j = 0; j < ARRAY_LEN(fs_allowedCustomPaks); j++) {
+				if (pack->checksum == fs_allowedCustomPaks[j])
+				{
+					return qtrue;
+				}
+			}
+
 			// FIXME: also use hashed file names
 			// NOTE TTimo: a pk3 with same checksum but different name would be validated too
 			//   I don't see this as allowing for any exploit, it would only happen if the client does manips of it's file names 'not a bug'
@@ -463,7 +479,7 @@ static fileHandle_t FS_HandleForFile(void)
 		}
 	}
 	Com_Error(ERR_DROP, "FS_HandleForFile: none free");
-
+	
 	return 0;
 }
 
@@ -575,21 +591,6 @@ static void FS_ReplaceSeparators(char *path)
 			lastCharWasSep = qfalse;
 		}
 	}
-}
-
-/**
- * @brief Normalize slashes in a file path to be posix/unix-like forward slashes
- * @param path
- * @return path
- */
-char *FS_NormalizePath(const char *path)
-{
-	static char dir[MAX_OSPATH] = { 0 };
-
-	Q_strncpyz(dir, path, sizeof(dir));
-	Q_strncpyz(dir, Q_StrReplace(dir, "\\", "/"), sizeof(dir));
-
-	return dir;
 }
 
 /**
@@ -766,10 +767,10 @@ void FS_CheckFilenameIsNotExecutable(const char *fileName, const char *function)
 static void FS_CheckFilenameIsMutable(const char *filename, const char *function)
 {
 	// Check if the filename ends with the library or pk3 extension
-	if (Sys_DllExtension(filename) || COM_CompareExtension(filename, ".pk3"))
+	if(Sys_DllExtension(filename) || COM_CompareExtension(filename, ".pk3"))
 	{
 		Com_Error(ERR_FATAL, "%s: Denied to manipulate '%s' due "
-		                     "to %s extension", function, filename, COM_GetExtension(filename));
+			"to %s extension", function, filename, COM_GetExtension(filename));
 	}
 }
 
@@ -1495,8 +1496,8 @@ long FS_FOpenFileReadDir(const char *fileName, searchpath_t *search, fileHandle_
 						    !FS_IsExt(fileName, ".menu", len) &&
 						    Q_stricmp(fileName, Sys_GetDLLName("qagame")) != 0 &&
 						    !strstr(fileName, "levelshots") &&
-						    !FS_IsExt(fileName, ".campaign", len) // don't referernce for gametype != 4 - see below
-						    )
+							!FS_IsExt(fileName, ".campaign", len) // don't referernce for gametype != 4 - see below
+							)
 						{
 							pak->referenced |= FS_GENERAL_REF;
 						}
@@ -1591,7 +1592,7 @@ long FS_FOpenFileReadDir(const char *fileName, searchpath_t *search, fileHandle_
 			    !FS_IsExt(fileName, ".game", len) &&    // menu files
 			    !FS_IsExt(fileName, ".dat", len) &&     // for journal files
 			    !FS_IsExt(fileName, ".bin", len) &&     // glsl shader binary
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 			    !FS_IsExt(fileName, ".glsl", len) &&
 #endif
 			    !FS_IsDemoExt(fileName, len))           // demos
@@ -1655,18 +1656,53 @@ long FS_FOpenFileRead(const char *fileName, fileHandle_t *file, qboolean uniqueF
 		Com_Error(ERR_FATAL, "FS_FOpenFileRead: Filesystem call made without initialization");
 	}
 
+	if (!(fs_filter_flag & FS_EXCLUDE_PK3))
+	{
+		int i;
+		for (i = 0; i < fs_numPurePaks; i++)
+		{
+			searchpath_t fakeSearch;
+			fakeSearch.pack = fs_purePaks[i];
+			fakeSearch.dir = NULL;
+			len = FS_FOpenFileReadDir(fileName, &fakeSearch, file, uniqueFILE, qtrue);
+
+			if (file == NULL)
+			{
+				if (len > 0)
+				{
+					return len;
+				}
+			}
+			else
+			{
+				if (len >= 0 && *file)
+				{
+					return len;
+				}
+			}
+		}
+	}
+
+	if (fs_filter_flag & FS_EXCLUDE_DIR)
+	{
+		goto file_not_found;
+	}
+
 	for (search = fs_searchpaths; search; search = search->next)
 	{
-		if (search->pack && (fs_filter_flag & FS_EXCLUDE_PK3))
-		{
-			continue;
-		}
-		if (search->dir && (fs_filter_flag & FS_EXCLUDE_DIR))
+		if (search->pack)
 		{
 			continue;
 		}
 
-		len = FS_FOpenFileReadDir(fileName, search, file, uniqueFILE, ALLOW_RAW_FILE_ACCESS);
+		if (fs_filter_flag & FS_EXCLUDE_PK3)
+		{
+			len = FS_FOpenFileReadDir(fileName, search, file, uniqueFILE, qtrue);
+		}
+		else
+		{
+			len = FS_FOpenFileReadDir(fileName, search, file, uniqueFILE, ALLOW_RAW_FILE_ACCESS);
+		}
 
 		if (file == NULL)
 		{
@@ -1684,6 +1720,7 @@ long FS_FOpenFileRead(const char *fileName, fileHandle_t *file, qboolean uniqueF
 		}
 	}
 
+file_not_found:
 #ifdef FS_MISSING
 	if (missingFiles)
 	{
@@ -1724,7 +1761,7 @@ long FS_FOpenFileRead_Filtered(const char *qpath, fileHandle_t *file, qboolean u
  * @brief Extracts the latest file from a pak file.
  *
  * @details Compares packed file against extracted file. If no differences, does not copy.
- * This is necessary for exe/dlls which may or may not be locked.
+ * This is necessary for exe\/dlls which may or may not be locked.
  *
  * @param[in] base
  * @param[in] gamedir
@@ -1734,8 +1771,9 @@ long FS_FOpenFileRead_Filtered(const char *qpath, fileHandle_t *file, qboolean u
  * (i.e. either the right file was extracted successfully, or it was already present)
  *
  * @note fullpath gives the full OS path to the dll that will potentially be loaded
- * It can be fs_homepath/<fs_game>/ or fs_basepath/<fs_game>/
- * The dll is extracted to fs_homepath if needed
+ *   on win32 it's always in fs_basepath\/\<fs_game\>\/
+ *   on linux it can be in fs_homepath\/\<fs_game\>\/ or fs_basepath\/\<fs_game\>\/
+ * The dll is extracted to fs_homepath (== fs_basepath on win32) if needed
  *
  * @note cvar_lastVersion is the optional name of a CVAR_ARCHIVE used to store the wolf version for the last extracted .so
  */
@@ -2979,7 +3017,7 @@ void FS_FreeFileList(char **list)
  */
 int FS_GetFileList(const char *path, const char *extension, char *listbuf, int bufsize)
 {
-	int  nFiles = 0, i, nTotal = 0, nLen;
+	int  nFiles   = 0, i, nTotal = 0, nLen;
 	char **pFiles = NULL;
 
 	*listbuf = 0;
@@ -3054,7 +3092,7 @@ static unsigned int Sys_CountFileList(char **list)
 static char **Sys_ConcatenateFileLists(char **list0, char **list1, char **list2)
 {
 	int  totalLength = 0;
-	char **cat = NULL, **dst, **src;
+	char **cat       = NULL, **dst, **src;
 
 	totalLength += Sys_CountFileList(list0);
 	totalLength += Sys_CountFileList(list1);
@@ -3110,7 +3148,7 @@ static char **Sys_ConcatenateFileLists(char **list0, char **list1, char **list2)
  */
 int FS_GetModList(char *listbuf, int bufsize)
 {
-	int          nMods = 0, i, j, nTotal = 0, nLen, nPaks, nPotential, nDescLen;
+	int          nMods   = 0, i, j, nTotal = 0, nLen, nPaks, nPotential, nDescLen;
 	char         **pPaks = NULL;
 	char         *name, *path;
 	char         descPath[MAX_OSPATH];
@@ -3184,9 +3222,9 @@ int FS_GetModList(char *listbuf, int bufsize)
 				// nLen is the length of the mod path
 				// we need to see if there is a description available
 				descPath[0] = '\0';
-
-				Com_sprintf(descPath, sizeof(descPath), "%s%cdescription.txt", name, PATH_SEP);
-
+				
+				Com_sprintf(descPath, sizeof (descPath), "%s%cdescription.txt", name, PATH_SEP);
+				
 				nDescLen = FS_SV_FOpenFileRead(descPath, &descHandle);
 				if (nDescLen > 0)
 				{
@@ -3449,8 +3487,6 @@ void FS_Path_f(void)
 	searchpath_t *s;
 	int          i;
 
-	Com_Printf("Current working directory:\n");
-	Com_Printf("    %s\n", Sys_Cwd());
 	Com_Printf("Current search path:\n");
 	for (s = fs_searchpaths; s; s = s->next)
 	{
@@ -3676,7 +3712,7 @@ void FS_AddGameDirectory(const char *path, const char *dir)
 
 			Q_strncpyz(pak->pakPathname, curpath, sizeof(pak->pakPathname));
 			// store the game name for downloading
-			Q_strncpyz(pak->pakGamename, FS_NormalizePath(dir), sizeof(pak->pakGamename));
+			Q_strncpyz(pak->pakGamename, dir, sizeof(pak->pakGamename));
 
 			fs_packFiles += pak->numfiles;
 
@@ -3869,7 +3905,7 @@ qboolean FS_CheckDirTraversal(const char *checkdir)
 qboolean FS_InvalidGameDir(const char *gamedir)
 {
 	if (!strcmp(gamedir, ".") || !strcmp(gamedir, "..")
-	    || strchr(gamedir, '/') || strchr(gamedir, '\\'))
+		|| strchr(gamedir, '/') || strchr(gamedir, '\\'))
 	{
 		return qtrue;
 	}
@@ -4060,7 +4096,6 @@ void FS_Shutdown(qboolean closemfp)
 
 	// any FS_ calls will now be an error until reinitialized
 	fs_searchpaths = NULL;
-	fs_checksumFeed = 0;
 
 	Cmd_RemoveCommand("path");
 	Cmd_RemoveCommand("dir");
@@ -4136,11 +4171,9 @@ static void FS_AddBothGameDirectories(const char *subpath)
 		{
 			FS_AddGameDirectory(fs_homepath->string, subpath);
 #if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
-			/* only mount containers for certain directories and if in pure mode */
-			if (fs_numServerPaks && (!Q_stricmp(subpath, BASEGAME) || (!Q_stricmp(subpath, DEFAULT_MODGAME) && fs_containerMount->integer)))
-			{
+			if (fs_containerName->string[0]) {
 				char contPath[MAX_OSPATH];
-				Com_sprintf(contPath, sizeof(contPath), "%s%c%s", subpath, PATH_SEP, FS_CONTAINER);
+				Com_sprintf(contPath, sizeof(contPath), "%s%c%s", subpath, PATH_SEP, fs_containerName->string);
 				FS_AddGameDirectory(fs_homepath->string, contPath);
 				Q_strncpyz(fs_gamedir, subpath, sizeof(fs_gamedir));
 			}
@@ -4149,6 +4182,10 @@ static void FS_AddBothGameDirectories(const char *subpath)
 	}
 }
 
+#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
+static qboolean FS_InvalidContainerName(const char *dirname);
+#endif
+
 /**
  * @brief FS_Startup
  * @param[in] gameName
@@ -4156,6 +4193,7 @@ static void FS_AddBothGameDirectories(const char *subpath)
 static void FS_Startup(const char *gameName)
 {
 	const char *homePath;
+	searchpath_t* search;
 
 	Com_Printf("----- Initializing Filesystem --\n");
 
@@ -4179,23 +4217,29 @@ static void FS_Startup(const char *gameName)
 	fs_homepath = Cvar_Get("fs_homepath", homePath, CVAR_INIT);
 
 	fs_gamedirvar = Cvar_Get("fs_game", "", CVAR_INIT | CVAR_SYSTEMINFO);
-
 #if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
-	fs_containerMount = Cvar_Get("fs_containerMount", "0", CVAR_INIT);
+	fs_containerName = Cvar_Get("fs_containerName", "", CVAR_INIT);
 #endif
+
 
 	if (FS_InvalidGameDir(gameName))
 	{
-		Com_Error(ERR_DROP, "Invalid com_basegame '%s'", gameName);
+		Com_Error( ERR_DROP, "Invalid com_basegame '%s'", gameName );
 	}
 	if (FS_InvalidGameDir(fs_basegame->string))
 	{
-		Com_Error(ERR_DROP, "Invalid fs_basegame '%s'", fs_basegame->string);
+		Com_Error( ERR_DROP, "Invalid fs_basegame '%s'", fs_basegame->string );
 	}
 	if (FS_InvalidGameDir(fs_gamedirvar->string))
 	{
-		Com_Error(ERR_DROP, "Invalid fs_game '%s'", fs_gamedirvar->string);
+		Com_Error( ERR_DROP, "Invalid fs_game '%s'", fs_gamedirvar->string );
 	}
+#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
+	if (FS_InvalidContainerName(fs_containerName->string))
+	{
+		Com_Error(ERR_DROP, "Invalid fs_containerName '%s'", fs_containerName->string);
+	}
+#endif
 
 	// add search path elements in reverse priority order
 	FS_AddBothGameDirectories(gameName);
@@ -4244,7 +4288,7 @@ static void FS_Startup(const char *gameName)
 	}
 
 #ifdef FEATURE_GETTEXT
-	// only translate default mod
+	// only translate legacy mod
 	// - other mods don't support our unicode translation files
 	// - mods have own strings to translate - we avoid language mixes
 	if (!Q_stricmp(fs_gamedirvar->string, DEFAULT_MODGAME))
@@ -4260,6 +4304,37 @@ static void FS_Startup(const char *gameName)
 #endif // ifndef DEDICATED
 
 	Com_Printf("--------------------------------\n");
+
+	for (search = fs_searchpaths; search && search->next; search = search->next)
+	{
+		int i;
+
+		if (!search->next->pack)
+			continue;
+
+		for (i = 0; i < ARRAY_LEN(fs_allowedCustomPaks); i++)
+		{
+			if (search->next->pack->checksum == fs_allowedCustomPaks[i])
+			{
+				searchpath_t *next = search->next->next;
+				search->next->next = fs_searchpaths;
+				fs_searchpaths = search->next;
+				search->next = next;
+			}
+		}
+	}
+
+	fs_numPurePaks = 0;
+	for (search = fs_searchpaths; search; search = search->next) {
+		if (fs_numPurePaks >= ARRAY_LEN(fs_purePaks))
+		{
+			break;
+		}
+		if (search->pack && FS_PakIsPure(search->pack)) {
+			fs_purePaks[fs_numPurePaks] = search->pack;
+			fs_numPurePaks++;
+		}
+	}
 }
 
 /**
@@ -4478,6 +4553,23 @@ const char *FS_ReferencedPakPureChecksums(void)
 			// is the element a pak file and has it been referenced based on flag?
 			if (search->pack && (search->pack->referenced & nFlags))
 			{
+				// so an eallowed custom pak doesn't get you kicked for unpure client
+				if (!(nFlags & (FS_CGAME_REF | FS_UI_REF)))
+				{
+					int i;
+					for (i = 0; i < ARRAY_LEN(fs_allowedCustomPaks); i++)
+					{
+						if (search->pack->checksum == fs_allowedCustomPaks[i])
+						{
+							break;
+						}
+					}
+					if (i < ARRAY_LEN(fs_allowedCustomPaks))
+					{
+						continue;
+					}
+				}
+
 				Q_strcat(info, sizeof(info), va("%i ", search->pack->pure_checksum));
 				if (nFlags & (FS_CGAME_REF | FS_UI_REF))
 				{
@@ -4583,7 +4675,7 @@ void FS_PureServerSetLoadedPaks(const char *pakSums, const char *pakNames)
 	{
 #if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
 		// reset the value on each disconnect, before fs restarts
-		Cvar_Set("fs_containerMount", "0");
+		Cvar_Set("fs_containerName", "");
 #endif
 		if (fs_reordered)
 		{
@@ -4686,6 +4778,10 @@ void FS_Fileinfo_f(void)
 	Com_Printf("fs_basepath %s\n", fs_basepath->string);
 	Com_Printf("fs_basegame %s\n", fs_basegame->string);
 	Com_Printf("fs_gamedirvar %s\n", fs_gamedirvar->string);
+#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
+	Com_Printf("fs_containerName %s\n", fs_containerName->string);
+#endif
+	// static searchpath_t *fs_searchpaths;
 
 	Com_Printf("Total megs read %i\n", fs_readCount / (1024 * 1024)); // total at runtime, isn't reset
 	Com_Printf("Total files read %i\n", fs_loadCount);                // total at runtime, isn't reset
@@ -4732,7 +4828,7 @@ static void FS_CheckRequiredFiles(int checksumFeed)
 			Com_Error(ERR_DROP, "Invalid game folder");
 		}
 
-		Com_Error(ERR_FATAL, "FS_InitFilesystem: Original game data files not found.\n\nPlease copy pak0.pk3 from the 'etmain' path of your Wolfenstein: Enemy Territory installation to:\n\n\"%s%c%s\"\n\n",
+		Com_Error(ERR_FATAL, "FS_InitFilesystem: Original game data files not found.\n\nPlease copy pak0.pk3, pak1.pk3 and pak2.pk3 from the 'etmain' path of your Wolfenstein: Enemy Territory installation to:\n\n\"%s%c%s\"\n\n",
 		          Cvar_VariableString("fs_basepath"), PATH_SEP, BASEGAME);
 	}
 }
@@ -4752,9 +4848,11 @@ void FS_InitFilesystem(void)
 	Com_StartupVariable("fs_basepath");
 	Com_StartupVariable("fs_homepath");
 	Com_StartupVariable("fs_game");
-
+#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
+	// Com_StartupVariable("fs_containerName"); // enable me if you want to specify startup container name
+#endif
 	// ET: Legacy start
-	// if fs_game is not specified, set 'DEFAULT_MODGAME' mod as default fs_game
+	// if fs_game is not specified, set 'legacy' mod as default fs_game
 	// this 'optimization' grants us 2.60b compatibility w/o deeper changes and users
 	// don't have to set fs_game param to run latest mod code
 	tmp_fs_game = Cvar_Get("fs_game", "", 0);
@@ -4818,7 +4916,7 @@ void FS_Restart(int checksumFeed)
 				// check existing pid file and make sure it's ok
 				if (!Com_CheckProfile())
 				{
-#ifndef ETLEGACY_DEBUG
+#ifndef LEGACY_DEBUG
 					Com_Printf(S_COLOR_YELLOW "WARNING: profile.pid found for profile '%s' - system settings will revert to defaults\n", cl_profileStr);
 					// set crashed state
 					Cbuf_AddText("set com_crashed 1\n");
@@ -4896,7 +4994,7 @@ int FS_FOpenFileByMode(const char *qpath, fileHandle_t *f, fsMode_t mode)
 		}
 		break;
 	default:
-		Com_Error(ERR_FATAL, "FS_FOpenFileByMode: bad mode [%i] of file '%s'", mode, qpath);
+		Com_Error(ERR_FATAL, "FS_FOpenFileByMode: bad mode [%i] of file '%s'", mode , qpath);
 		return -1;
 	}
 
@@ -5243,6 +5341,31 @@ qboolean FS_Unzip(const char *fileName, qboolean quiet)
 	return FS_UnzipTo(fileName, newFilePath, quiet);
 }
 
+#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
+
+// File containerization facilities
+
+#define IsPathSep(X) ((X) == '\\' || (X) == '/' || (X) == PATH_SEP)
+#define CONTAINER_DIRNAME "server_"
+/**
+* @brief FS_InvalidContainerName
+* @param[in] dirname
+* @return qtrue if name is invalid
+*/
+static qboolean FS_InvalidContainerName(const char *dirname)
+{
+	if (*dirname && (strncmp(dirname, CONTAINER_DIRNAME, strlen(CONTAINER_DIRNAME)) || strchr(dirname, '/') || strchr(dirname, '\\')))
+	{
+		return qtrue;
+	}
+
+	return qfalse;
+}
+
+void FS_CreateContainerName(const char *id, char *output)
+{
+	Com_sprintf(output, 64, CONTAINER_DIRNAME "%s", id);
+}
 
 /**
 * @brief FS_Basename
@@ -5283,7 +5406,7 @@ const char *FS_Dirpath(const char *path)
 	int         index               = 0;
 	int         lastSepPos          = 0;
 
-	while (index < MAX_OSPATH && path[index])
+	while (path[index] && index < MAX_OSPATH)
 	{
 		if (IsPathSep(path[index]))
 		{
@@ -5349,7 +5472,7 @@ int FS_CalculateFileSHA1(const char *path, char *hash)
 
 	Com_Memset(hash, 0, 40);
 	SHA1Reset(&sha);
-
+	
 	f = Sys_FOpen(path, "rb");
 	if (!f)
 	{
@@ -5358,19 +5481,12 @@ int FS_CalculateFileSHA1(const char *path, char *hash)
 
 	fseek(f, 0, SEEK_END);
 	len = ftell(f);
-
-	if (len == -1)
-	{
-		fclose(f);
-		return 1;
-	}
-
+	if (len == -1) return 1;
 	fseek(f, 0, SEEK_SET);
 
 	buf = Com_Allocate(MAX_BUFFER_SIZE);
 	if (!buf)
 	{
-		fclose(f);
 		return 1;
 	}
 
@@ -5386,27 +5502,22 @@ int FS_CalculateFileSHA1(const char *path, char *hash)
 
 	if (!SHA1Result(&sha))
 	{
-		fclose(f);
-		Com_Dealloc(buf);
 		return 1;
 	}
 
 	Com_Memcpy(hash, va(
-				   "%08x%08x%08x%08x%08x",
-				   sha.Message_Digest[0],
-				   sha.Message_Digest[1],
-				   sha.Message_Digest[2],
-				   sha.Message_Digest[3],
-				   sha.Message_Digest[4]
-				   ), 40);
-
+		"%08x%08x%08x%08x%08x",
+		sha.Message_Digest[0],
+		sha.Message_Digest[1],
+		sha.Message_Digest[2],
+		sha.Message_Digest[3],
+		sha.Message_Digest[4]
+	), 40);
+	
 	fclose(f);
-	Com_Dealloc(buf);
 
 	return 0;
 }
-
-#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
 
 typedef struct
 {
@@ -5414,121 +5525,133 @@ typedef struct
 	char hash[41];
 } pakMetaEntry_t;
 
-#define WL_MAX_ENTRIES 16
-#define WL_FILENAME    "checksums.txt"
+#define MAX_META_ENTRIES 4096 // see db_mode 1
+#define META_FILE_NAME "etl_pakmeta.txt"
+pakMetaEntry_t pakMetaEntries[MAX_META_ENTRIES];
+pakMetaEntry_t *pakMetaEntryMap[MAX_META_ENTRIES];
 
-pakMetaEntry_t pakMetaEntries[WL_MAX_ENTRIES];
-pakMetaEntry_t *pakMetaEntryMap[WL_MAX_ENTRIES];
+#ifdef FEATURE_DBMS
+// FIXME: sort header entries
+extern void DB_InsertWhitelist(const char *key, const char *name);
+extern qboolean DB_BeginTransaction(void);
+extern qboolean DB_EndTransaction(void);
+extern qboolean DB_IsWhitelisted(const char *pakName, const char *hash);
+#endif
 
 /**
 * @brief FS_InitWhitelist loads the file containing whitelisted entries
 */
 void FS_InitWhitelist()
 {
-	int            i = 0, p = 0, lc = 0, div, len, msec, fileLen, pakNameHash;
-	FILE           *file;
-	char           *fileListPath, *buf, *line;
+    int            i = 0, p = 0, lc = 0, div, len, msec, pakNameHash, fileLen;
 	pakMetaEntry_t *pakEntry;
+	FILE           *file;
+    char           *fileMetaPath, *buf, *line;
 
 	msec = Sys_Milliseconds();
 
-	Com_Memset(pakMetaEntries, 0, sizeof(pakMetaEntries));
-	Com_Memset(pakMetaEntryMap, 0, sizeof(pakMetaEntryMap));
+	Com_Memset(pakMetaEntries, 0, MAX_META_ENTRIES);
+	Com_Memset(pakMetaEntryMap, 0, MAX_META_ENTRIES);
 
-	fileListPath = va("%s%c%s", fs_homepath->string, PATH_SEP, WL_FILENAME);
-	file         = Sys_FOpen(fileListPath, "rb");
+	fileMetaPath = va("%s%c%s", fs_homepath->string, PATH_SEP, META_FILE_NAME);
+	file = Sys_FOpen(fileMetaPath, "rb");
 	if (!file)
 	{
-		Com_DPrintf(S_COLOR_YELLOW "WARNING: " WL_FILENAME " was not found\n");
+		Com_Printf(S_COLOR_YELLOW "WARNING: " META_FILE_NAME " was not found\n");
 		return;
 	}
 
 	fseek(file, 0, SEEK_END);
-	fileLen = ftell(file);
-	if (fileLen == -1)
+    fileLen = ftell(file);
+    if (fileLen == -1)
 	{
-		Com_DPrintf(S_COLOR_YELLOW "WARNING: unable to get current position in stream of file " WL_FILENAME "\n");
-		fclose(file);
+		Com_Printf(S_COLOR_YELLOW "WARNING: unable to get current position in stream of file " META_FILE_NAME "\n");
 		return;
 	}
 	fseek(file, 0, SEEK_SET);
 
-	buf = Com_Allocate(fileLen + 1);
+    buf = Com_Allocate(fileLen + 1);
 	if (!buf)
 	{
-		Com_DPrintf(S_COLOR_YELLOW "WARNING: unable to allocate buffer for " WL_FILENAME " contents\n");
-		fclose(file);
+		Com_Printf(S_COLOR_YELLOW "WARNING: unable to allocate buffer for " META_FILE_NAME " contents\n");
 		return;
 	}
-	if (fread(buf, 1, fileLen, file) != fileLen)
+    if (fread(buf, 1, fileLen, file) != fileLen)
 	{
-		Com_DPrintf(S_COLOR_YELLOW "WARNING: FS_InitWhitelist: short read");
-		fclose(file);
+		Com_Printf(S_COLOR_YELLOW "WARNING: FS_InitWhitelist: short read");
 		Com_Dealloc(buf);
 		return;
 	}
 
-	fclose(file);
+    fclose(file);
 
-	buf[fileLen] = 0;
-	line         = buf;
+    buf[fileLen] = 0;
+    line = buf;
 
-	// Each file hash entry consists of pk3 name and sha1 hash pair.
-	// Each entry delimited by newline.
-	while (i < WL_MAX_ENTRIES)
+#ifdef FEATURE_DBMS
+    (void) DB_BeginTransaction();
+#endif
+
+    while (i < MAX_META_ENTRIES)
 	{
-		if (p >= fileLen)
-		{
-			break;
-		}
-		if (buf[p] == '\n' || !buf[p + 1])
-		{
-			lc++;
-			len = &buf[p] - line;
-			if (len == 0)
-			{
-				line = &buf[++p];
-				continue;
-			}
-			for (div = len; div > 0; div--)
-			{
-				if (*(line + div) == ' ')
-				{
-					break;
-				}
-			}
-			if (div == 0 || div == len || (len - div != 41))
-			{
-				Com_DPrintf(S_COLOR_YELLOW "WARNING: FS_InitWhitelist: Erroneous line %i found, ignoring the rest of file\n", lc);
-				break;
-			}
-			pakEntry = &pakMetaEntries[i++];
-			Com_Memcpy(pakEntry->name, line, (size_t)div);
-			Com_Memcpy(pakEntry->hash, line + div + 1, 40);
-			pakNameHash                  = FS_HashFileName(pakEntry->name, WL_MAX_ENTRIES);
-			pakMetaEntryMap[pakNameHash] = pakEntry;
-
-			line = &buf[p + 1];
-		}
-		else if (buf[p] == '/' && buf[p + 1] == '/')
-		{
-			while (++p < fileLen && (buf[p] && buf[p] != '\n')) /* skip line */
-				;
-			line = &buf[p + 1];
-			lc++;
-		}
-		p++;
+        if (p >= fileLen)
+        {
+            break;
+        }
+        if (buf[p] == '\n' || !buf[p + 1])
+        {
+            lc++;
+            len = &buf[p] - line;
+            if (len == 0)
+            {
+                line = &buf[++p];
+                continue;
+            }
+            for (div = len; div > 0; div--)
+            {
+                if (*(line + div) == ' ')
+                {
+                    break;
+                }
+            }
+            if (div == 0 || div == len || (len - div != 41))
+            {
+                Com_Printf("^1FS_InitWhitelist: Erroneous line %i found, ignoring the rest of file\n", lc);
+                break;
+            }
+            pakEntry = &pakMetaEntries[i++];
+            Com_Memcpy(pakEntry->name, line, (size_t)div);
+            Com_Memcpy(pakEntry->hash, line + div + 1, 40);
+            pakNameHash = FS_HashFileName(pakEntry->name, MAX_META_ENTRIES);
+            pakMetaEntryMap[pakNameHash] = pakEntry;
+#ifdef FEATURE_DBMS
+            DB_InsertWhitelist(pakEntry->hash, pakEntry->name);
+#endif
+            line = &buf[p + 1];
+        }
+        else if (buf[p] == '/' && buf[p + 1] == '/')
+        {
+            while (++p < fileLen && (buf[p] && buf[p] != '\n')) /* skip line */;
+            line = &buf[p + 1];
+            lc++;
+        }
+        p++;
 	}
+
+#ifdef FEATURE_DBMS
+    (void) DB_EndTransaction();
+#endif
 
 	Com_Dealloc(buf);
 
-	Com_DPrintf(S_COLOR_CYAN "INFO: %i entries imported from whitelist in %i ms\n", lc, (Sys_Milliseconds() - msec));
+    Com_Printf("%i entries imported from whitelist in %i ms\n", i, (Sys_Milliseconds() - msec));
 }
 
 /**
-* @brief FS_IsWhitelisted checks whether pak is contained in the whitelist
+* @brief FS_IsWhitelisted checks whether pak is contained in the list
 * @param[in] pakName the basename of the pak
 * @param[out] hash the sha1 hash of the pak
+* @return qtrue if predicate holds
 */
 qboolean FS_IsWhitelisted(const char *pakName, const char *hash)
 {
@@ -5536,35 +5659,38 @@ qboolean FS_IsWhitelisted(const char *pakName, const char *hash)
 	int            pakNameHash;
 	pakMetaEntry_t *pakEntry;
 
-	pakNameHash = FS_HashFileName(pakName, WL_MAX_ENTRIES);
+#ifdef FEATURE_DBMS
+    if (DB_IsWhitelisted(pakName, hash))
+    {
+    	return qtrue;
+    }
+#endif
+
+	pakNameHash = FS_HashFileName(pakName, MAX_META_ENTRIES);
 	pakEntry    = pakMetaEntryMap[pakNameHash];
 
 	if (!pakEntry)
 	{
-		// try manual search on hash miss
-		for (i = 0; i < WL_MAX_ENTRIES; i++)
+		// try manual search on hash miss 
+		for (i = 0; i < MAX_META_ENTRIES; i++)
 		{
 			pakEntry = &pakMetaEntries[i];
-
 			// list end, bail out
 			if (!pakEntry->name[0] || !pakEntry->hash[0])
 			{
 				return qfalse;
 			}
-
 			// found it?
 			if (!strcmp(pakEntry->name, pakName))
 			{
 				break;
 			}
 		}
-
-		if (i == WL_MAX_ENTRIES)
+		if (!pakEntry)
 		{
 			return qfalse;
 		}
 	}
-
 	// got match?
 	if (!strcmp(pakEntry->hash, hash))
 	{
@@ -5572,4 +5698,7 @@ qboolean FS_IsWhitelisted(const char *pakName, const char *hash)
 	}
 	return qfalse;
 }
+
+#undef MAX_META_ENTRIES
+#undef META_FILE_NAME
 #endif

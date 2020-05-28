@@ -115,7 +115,7 @@ const char *BuildShaderStateConfig()
 	int         i;
 	int         i1, i2;
 
-	Com_Memset(buff, 0, sizeof(buff));
+	Com_Memset(buff, 0, MAX_STRING_CHARS);
 	for (i = 0; i < remapCount; i++)
 	{
 		i1 = G_ShaderIndex(remappedShaders[i].oldShader);
@@ -1752,8 +1752,8 @@ void G_ParseCampaigns(void)
 			}
 
 			dirlen = strlen(dirptr);
-			Q_strcpy(filename, "scripts/");
-			Q_strcat(filename, MAX_QPATH, dirptr);
+			strcpy(filename, "scripts/");
+			strcat(filename, dirptr);
 
 			if (G_LoadCampaignsFromFile(filename))
 			{

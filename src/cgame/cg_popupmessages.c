@@ -450,11 +450,8 @@ void CG_AddPMItem(popupMessageType_t type, const char *message, const char *mess
 	}
 
 	// colored obituaries
-	if (color == NULL)
-	{
-		listItem->color[0] = listItem->color[1] = listItem->color[2] = 1.f;
-	}
-	else
+	listItem->color[0] = listItem->color[1] = listItem->color[2] = 1.f;
+	if (color != NULL)
 	{
 		VectorCopy(color, listItem->color);
 	}
@@ -539,9 +536,6 @@ void CG_PMItemBigSound(pmListItemBig_t *item)
 	switch (item->type)
 	{
 	case PM_RANK:
-#ifdef FEATURE_PRESTIGE
-	case PM_PRESTIGE:
-#endif
 		trap_S_StartSound(NULL, cg.snap->ps.clientNum, CHAN_AUTO, cgs.media.sndRankUp);
 		break;
 	case PM_SKILL:
@@ -747,17 +741,17 @@ void CG_DrawPMItems(rectDef_t rect, int style)
 
 		if (listItem->weaponShader > 0)
 		{
-			for (j = 0; j < 3; j++)
+			for (i = 0; i < 3; i++)
 			{
-				colourText[j] = listItem->color[j];
+				colourText[i] = listItem->color[i];
 			}
 			trap_R_SetColor(colourText);
 
 			CG_DrawPic(size + w + 12, ICON_Y_OFFSET(y), sizew * listItem->scaleShader, sizew, listItem->weaponShader);
 
-			for (j = 0; j < 3; j++)
+			for (i = 0; i < 3; i++)
 			{
-				colourText[j] = 1.f;
+				colourText[i] = 1.f;
 			}
 			trap_R_SetColor(NULL);
 		}

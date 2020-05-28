@@ -273,42 +273,6 @@ static void G_SendSkillRating(gentity_t *ent)
 }
 #endif
 
-#ifdef FEATURE_PRESTIGE
-/**
- * @brief G_SendPrestige
- * @param[in] ent
- */
-static void G_SendPrestige(gentity_t *ent)
-{
-	char      buffer[1024];
-	int       i, clientNum;
-	gclient_t *cl;
-
-	if (!ent || !ent->client)
-	{
-		return;
-	}
-
-	trap_Argv(1, buffer, sizeof(buffer));
-
-	clientNum = atoi(buffer);
-	if (clientNum < 0 || clientNum > g_maxclients.integer)
-	{
-		return;
-	}
-
-	Q_strncpyz(buffer, "pr ", sizeof(buffer));
-
-	for (i = 0; i < level.numConnectedClients; i++)
-	{
-		cl = &level.clients[level.sortedClients[i]];
-		Q_strcat(buffer, sizeof(buffer), va("%i ", cl->sess.prestige));
-	}
-
-	trap_SendServerCommand(ent - g_entities, buffer);
-}
-#endif
-
 /**
  * @brief Add score with clientNum at index i of level.sortedClients[] to the string buf.
  *
@@ -361,8 +325,7 @@ qboolean G_SendScore_Add(gentity_t *ent, int i, char *buf, int bufsize)
 	{
 		int j;
 
-		if ((g_gametype.integer == GT_WOLF_CAMPAIGN && g_xpSaver.integer) ||
-		    (g_gametype.integer == GT_WOLF_CAMPAIGN && (g_campaigns[level.currentCampaign].current != 0 && !level.newCampaign)) ||
+		if ((g_gametype.integer == GT_WOLF_CAMPAIGN && (g_campaigns[level.currentCampaign].current != 0 && !level.newCampaign)) ||
 		    (g_gametype.integer == GT_WOLF_LMS && g_currentRound.integer != 0))
 		{
 			for (j = SK_BATTLE_SENSE; j < SK_NUM_SKILLS; j++)
@@ -433,13 +396,6 @@ void G_SendScore(gentity_t *ent)
 	if (g_skillRating.integer)
 	{
 		G_SendSkillRating(ent);
-	}
-#endif
-
-#ifdef FEATURE_PRESTIGE
-	if (g_prestige.integer)
-	{
-		G_SendPrestige(ent);
 	}
 #endif
 
@@ -799,21 +755,12 @@ void Cmd_Give_f(gentity_t *ent)
 		// modified
 		if (amount)
 		{
-			if (amount > 0)
-			{
-				ent->health += amount;
-			}
-			else
-			{
-				// health amount could be negative and deal damage
-				G_Damage(ent, ent, ent, NULL, NULL, -amount, DAMAGE_NO_PROTECTION, MOD_UNKNOWN);
-			}
+			ent->health += amount;
 		}
 		else
 		{
 			ent->health = ent->client->ps.stats[STAT_MAX_HEALTH];
 		}
-
 		if (!give_all)
 		{
 			return;
@@ -1247,11 +1194,53 @@ void Cmd_DropObjective_f(gentity_t *ent)
  * @param[out] sState
  * @param[in,out] specClient
  */
-void G_TeamDataForString(const char *teamstr, int clientNum, team_t *team, spectatorState_t *sState)
+void G_TeamDataForString(const char *teamstr, int clientNum, team_t *team, spectatorState_t *sState, int *specClient)
 {
 	*sState = SPECTATOR_NOT;
+	if (!Q_stricmp(teamstr, "follow1")) // follow player 1 as a spectator (we do require at least 1 playing client)
+	{
+		*team = TEAM_SPECTATOR;
+		if (TeamCount(clientNum, TEAM_AXIS) + TeamCount(clientNum, TEAM_ALLIES) > 0)
+		{
+			*sState = SPECTATOR_FOLLOW;
+		}
+		else
+		{
+			*sState = SPECTATOR_FREE;
+		}
 
-	if (!Q_stricmp(teamstr, "spectator") || !Q_stricmp(teamstr, "s"))
+		if (specClient)
+		{
+			*specClient = -1;
+		}
+	}
+	else if (!Q_stricmp(teamstr, "follow2")) // follow player 2 as a spectator (we do require at least 2 playing clients)
+	{
+		int specClientNum = -2;
+		int playerCount   = TeamCount(clientNum, TEAM_AXIS) + TeamCount(clientNum, TEAM_ALLIES);
+
+		*team = TEAM_SPECTATOR;
+		if (playerCount > 1)
+		{
+			*sState = SPECTATOR_FOLLOW;
+		}
+		// if there is no 2nd player to follow, follow the first one
+		else if (playerCount > 0)
+		{
+			*sState       = SPECTATOR_FOLLOW;
+			specClientNum = -1;
+		}
+		else
+		{
+			*sState = SPECTATOR_FREE;
+		}
+
+		if (specClient)
+		{
+			*specClient = specClientNum;
+		}
+	}
+	else if (!Q_stricmp(teamstr, "spectator") || !Q_stricmp(teamstr, "s"))
 	{
 		*team   = TEAM_SPECTATOR;
 		*sState = SPECTATOR_FREE;
@@ -1384,11 +1373,12 @@ qboolean SetTeam(gentity_t *ent, const char *s, qboolean force, weapon_t w1, wea
 	gclient_t        *client   = ent->client;
 	int              clientNum = client - level.clients;
 	spectatorState_t specState;
+	int              specClient   = 0;
 	int              respawnsLeft = client->ps.persistant[PERS_RESPAWNS_LEFT]; // preserve respawn count
 
 	// see what change is requested
 
-	G_TeamDataForString(s, client - level.clients, &team, &specState);
+	G_TeamDataForString(s, client - level.clients, &team, &specState, &specClient);
 
 	if (ent->client->freezed)
 	{
@@ -1540,7 +1530,7 @@ qboolean SetTeam(gentity_t *ent, const char *s, qboolean force, weapon_t w1, wea
 	client->sess.spec_team       = 0;
 	client->sess.sessionTeam     = team;
 	client->sess.spectatorState  = specState;
-	client->sess.spectatorClient = 0;
+	client->sess.spectatorClient = specClient;
 	client->pers.ready           = qfalse;
 
 	// During team switching you can sometime spawn immediately
@@ -1812,7 +1802,7 @@ int G_TeamCount(gentity_t *ent, int weap)
 qboolean G_IsWeaponDisabled(gentity_t *ent, weapon_t weapon)
 {
 	int        playerCount, weaponCount, maxCount = -1;
-	const char *weaponString = "";
+	const char *weaponString;
 
 	// allow selecting weapons as spectator for bots (to avoid endless loops in pfnChangeTeam())
 	if (ent->client->sess.sessionTeam == TEAM_SPECTATOR && !(ent->r.svFlags & SVF_BOT))
@@ -2122,6 +2112,7 @@ void Cmd_Team_f(gentity_t *ent, unsigned int dwCommand, qboolean fValue)
 	int              playerType;
 	team_t           team;
 	spectatorState_t specState;
+	int              specClient;
 	qboolean         classChange;
 
 	if (trap_Argc() < 2)
@@ -2157,7 +2148,7 @@ void Cmd_Team_f(gentity_t *ent, unsigned int dwCommand, qboolean fValue)
 	w  = atoi(weap);
 	w2 = atoi(weap2);
 
-	G_TeamDataForString(s, ent->s.clientNum, &team, &specState);
+	G_TeamDataForString(s, ent->s.clientNum, &team, &specState, &specClient);
 
 	// don't allow shoutcasters to join teams
 	if (ent->client->sess.shoutcaster && (team == TEAM_ALLIES || team == TEAM_AXIS))
@@ -2190,18 +2181,6 @@ void Cmd_Team_f(gentity_t *ent, unsigned int dwCommand, qboolean fValue)
 	if (ent->client->sess.playerType != playerType || ent->client->sess.latchPlayerType != playerType)
 	{
 		classChange = qtrue;
-
-		// default primary weapon for class and team
-		if (!IS_VALID_WEAPON(w))
-		{
-			w = GetPlayerClassesData(team, playerType)->classPrimaryWeapons[0].weapon;
-		}
-
-		// default secondary weapon for class and team
-		if (!IS_VALID_WEAPON(w2))
-		{
-			w2 = GetPlayerClassesData(team, playerType)->classSecondaryWeapons[0].weapon;
-		}
 	}
 	else
 	{
@@ -2211,7 +2190,7 @@ void Cmd_Team_f(gentity_t *ent, unsigned int dwCommand, qboolean fValue)
 		if (ent->client->sess.sessionTeam != TEAM_SPECTATOR)
 		{
 			// primary weapon
-			if (!IS_VALID_WEAPON(w))
+			if (!w)
 			{
 				w = ent->client->sess.playerWeapon;
 
@@ -2222,7 +2201,7 @@ void Cmd_Team_f(gentity_t *ent, unsigned int dwCommand, qboolean fValue)
 			}
 
 			// secondary weapon
-			if (!IS_VALID_WEAPON(w2))
+			if (!w2)
 			{
 				w2 = ent->client->sess.playerWeapon2;
 
@@ -2418,6 +2397,7 @@ void Cmd_Follow_f(gentity_t *ent, unsigned int dwCommand, qboolean fValue)
 void Cmd_FollowCycle_f(gentity_t *ent, int dir, qboolean skipBots)
 {
 	int clientnum;
+	int original;
 
 	// first set them to spectator
 	if ((ent->client->sess.spectatorState == SPECTATOR_NOT) && (!(ent->client->ps.pm_flags & PMF_LIMBO))) // for limbo state
@@ -2430,7 +2410,22 @@ void Cmd_FollowCycle_f(gentity_t *ent, int dir, qboolean skipBots)
 		G_Error("Cmd_FollowCycle_f: bad dir %i\n", dir);
 	}
 
+	// if dedicated follow client, just switch between the two auto clients
+	if (ent->client->sess.spectatorClient < 0)
+	{
+		if (ent->client->sess.spectatorClient == -1)
+		{
+			ent->client->sess.spectatorClient = -2;
+		}
+		else if (ent->client->sess.spectatorClient == -2)
+		{
+			ent->client->sess.spectatorClient = -1;
+		}
+		return;
+	}
+
 	clientnum = ent->client->sess.spectatorClient;
+	original  = clientnum;
 	do
 	{
 		clientnum += dir;
@@ -2489,7 +2484,7 @@ void Cmd_FollowCycle_f(gentity_t *ent, int dir, qboolean skipBots)
 		ent->client->sess.spectatorState  = SPECTATOR_FOLLOW;
 		return;
 	}
-	while (clientnum != ent->client->sess.spectatorClient);
+	while (clientnum != original);
 
 	// leave it where it was
 }
@@ -2500,19 +2495,25 @@ void Cmd_FollowCycle_f(gentity_t *ent, int dir, qboolean skipBots)
  */
 qboolean G_FollowSame(gentity_t *ent)
 {
-	if (ent->client->sess.spectatorClient < 0 || ent->client->sess.spectatorClient >= level.maxclients)
+	int clientnum = ent->client->sess.spectatorClient;
+
+	if (clientnum >= level.maxclients)
+	{
+		return qfalse;
+	}
+	if (clientnum < 0)
 	{
 		return qfalse;
 	}
 
 	// can only follow connected clients
-	if (level.clients[ent->client->sess.spectatorClient].pers.connected != CON_CONNECTED)
+	if (level.clients[clientnum].pers.connected != CON_CONNECTED)
 	{
 		return qfalse;
 	}
 
 	// can't follow another spectator
-	if (level.clients[ent->client->sess.spectatorClient].sess.sessionTeam == TEAM_SPECTATOR)
+	if (level.clients[clientnum].sess.sessionTeam == TEAM_SPECTATOR)
 	{
 		return qfalse;
 	}
@@ -2520,18 +2521,18 @@ qboolean G_FollowSame(gentity_t *ent)
 	// couple extra checks for limbo mode
 	if (ent->client->ps.pm_flags & PMF_LIMBO)
 	{
-		if (level.clients[ent->client->sess.spectatorClient].sess.sessionTeam != ent->client->sess.sessionTeam)
+		if (level.clients[clientnum].sess.sessionTeam != ent->client->sess.sessionTeam)
 		{
 			return qfalse;
 		}
 	}
 
-	if (level.clients[ent->client->sess.spectatorClient].ps.pm_flags & PMF_LIMBO)
+	if (level.clients[clientnum].ps.pm_flags & PMF_LIMBO)
 	{
 		return qfalse;
 	}
 
-	if (!G_desiredFollow(ent, level.clients[ent->client->sess.spectatorClient].sess.sessionTeam))
+	if (!G_desiredFollow(ent, level.clients[clientnum].sess.sessionTeam))
 	{
 		return qfalse;
 	}
@@ -2884,7 +2885,7 @@ void G_Voice(gentity_t *ent, gentity_t *target, int mode, const char *id, const 
 		ent->voiceChatSquelch = 0;
 	}
 
-	// spam check
+	// Only do the spam check for MP
 	if (ent->voiceChatSquelch >= 30000)
 	{
 		trap_SendServerCommand(ent - g_entities, "cp \"^1Spam Protection^7: VoiceChat ignored\"");
@@ -2893,7 +2894,7 @@ void G_Voice(gentity_t *ent, gentity_t *target, int mode, const char *id, const 
 
 	if (g_voiceChatsAllowed.integer)
 	{
-		ent->voiceChatSquelch += (30000 / g_voiceChatsAllowed.integer);
+		ent->voiceChatSquelch += (34000 / g_voiceChatsAllowed.integer);
 	}
 	else
 	{
@@ -3081,7 +3082,6 @@ qboolean Cmd_CallVote_f(gentity_t *ent, unsigned int dwCommand, qboolean fRefCom
 	char arg1[MAX_STRING_TOKENS];
 	char arg2[MAX_STRING_TOKENS];
 	char voteDesc[VOTE_MAXSTRING];
-	char *voteStringFormat;
 
 	// Normal checks, if its not being issued as a referee command
 	if (!fRefCommand)
@@ -3100,11 +3100,6 @@ qboolean Cmd_CallVote_f(gentity_t *ent, unsigned int dwCommand, qboolean fRefCom
 		else if (level.intermissiontime)
 		{
 			CP("cp \"You cannot call a vote during intermission.\"");
-			return qfalse;
-		}
-		else if (g_gamestate.integer == GS_WARMUP_COUNTDOWN)
-		{
-			CP("cp \"You cannot call a vote when warmup is ending.\"");
 			return qfalse;
 		}
 		else if (!ent->client->sess.referee)
@@ -3162,8 +3157,7 @@ qboolean Cmd_CallVote_f(gentity_t *ent, unsigned int dwCommand, qboolean fRefCom
 		return qfalse;
 	}
 
-	voteStringFormat = arg2[0] ? "%s %s" : "%s";
-	Com_sprintf(level.voteInfo.voteString, sizeof(level.voteInfo.voteString), voteStringFormat, arg1, arg2);
+	Com_sprintf(level.voteInfo.voteString, sizeof(level.voteInfo.voteString), "%s %s", arg1, arg2);
 
 	// start the voting, the caller automatically votes yes
 	// If a referee, vote automatically passes.
@@ -3193,7 +3187,7 @@ qboolean Cmd_CallVote_f(gentity_t *ent, unsigned int dwCommand, qboolean fRefCom
 		{
 			level.voteInfo.voteYes = 0;
 		}
-		AP(va("print \"[lof]%s^7 [lon]called a vote.[lof] Voting for: %s\n\"", ent->client->pers.netname, level.voteInfo.voteString));
+		AP(va("print \"[lof]%s^7 [lon]called a vote.[lof]  Voting for: %s\n\"", ent->client->pers.netname, level.voteInfo.voteString));
 
 		G_LogPrintf("callvote: %i %s\n", (int)(ent - g_entities), level.voteInfo.voteString);
 
@@ -4537,11 +4531,6 @@ void Cmd_IntermissionSkillRating_f(gentity_t *ent)
 		return;
 	}
 
-	if (!g_skillRating.integer)
-	{
-		return;
-	}
-
 	Q_strncpyz(buffer, "imsr ", sizeof(buffer));
 	for (i = 0; i < g_maxclients.integer; i++)
 	{
@@ -4559,76 +4548,6 @@ void Cmd_IntermissionSkillRating_f(gentity_t *ent)
 	}
 
 	trap_SendServerCommand(ent - g_entities, buffer);
-}
-#endif
-
-#ifdef FEATURE_PRESTIGE
-/**
- * @brief Cmd_IntermissionPrestige_f
- * @param[in] ent
- */
-void Cmd_IntermissionPrestige_f(gentity_t *ent)
-{
-	char      buffer[1024];
-	int       i;
-	gclient_t *cl;
-
-	if (!ent || !ent->client)
-	{
-		return;
-	}
-
-	if (!g_prestige.integer)
-	{
-		return;
-	}
-
-	Q_strncpyz(buffer, "impr ", sizeof(buffer));
-	for (i = 0; i < g_maxclients.integer; i++)
-	{
-		if (g_entities[i].inuse)
-		{
-			cl = &level.clients[i];
-			Q_strcat(buffer, sizeof(buffer), va("%i ", cl->sess.prestige));
-		}
-		else
-		{
-			Q_strcat(buffer, sizeof(buffer), "0 ");
-		}
-	}
-
-	trap_SendServerCommand(ent - g_entities, buffer);
-}
-
-/**
- * @brief Cmd_IntermissionCollectPrestige_f
- * @param[in,out] ent
- */
-void Cmd_IntermissionCollectPrestige_f(gentity_t *ent)
-{
-	if (!ent || !ent->client)
-	{
-		return;
-	}
-
-	if (g_gametype.integer == GT_WOLF_CAMPAIGN || g_gametype.integer == GT_WOLF_STOPWATCH || g_gametype.integer == GT_WOLF_LMS)
-	{
-		trap_SendServerCommand(ent - g_entities, "print \"'imcollectpr' not allowed during current gametype!\n\"");
-		return;
-	}
-
-	if (!g_prestige.integer)
-	{
-		return;
-	}
-
-	if (g_gamestate.integer != GS_INTERMISSION)
-	{
-		trap_SendServerCommand(ent - g_entities, "print \"'imcollectpr' only allowed during intermission!\n\"");
-		return;
-	}
-
-	G_SetClientPrestige(ent->client, qfalse);
 }
 #endif
 
@@ -4813,7 +4732,7 @@ void Cmd_UnIgnore_f(gentity_t *ent)
 	}
 }
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 #ifdef FEATURE_OMNIBOT
 
 /**
@@ -4885,7 +4804,7 @@ void Cmd_SwapPlacesWithBot_f(gentity_t *ent, int botNum)
 	client->pers.lastReinforceTime = 0;
 }
 #endif  // FEATURE_OMNIBOT
-#endif  // ETLEGACY_DEBUG
+#endif  // LEGACY_DEBUG
 
 /**
  * @brief ClientCommand
@@ -5060,19 +4979,10 @@ void ClientCommand(int clientNum)
 #ifdef FEATURE_RATING
 	else if (!Q_stricmp(cmd, "imsr"))
 	{
-		Cmd_IntermissionSkillRating_f(ent);
-		return;
-	}
-#endif
-#ifdef FEATURE_PRESTIGE
-	else if (!Q_stricmp(cmd, "impr"))
-	{
-		Cmd_IntermissionPrestige_f(ent);
-		return;
-	}
-	else if (!Q_stricmp(cmd, "imcollectpr"))
-	{
-		Cmd_IntermissionCollectPrestige_f(ent);
+		if (g_skillRating.integer > 0)
+		{
+			Cmd_IntermissionSkillRating_f(ent);
+		}
 		return;
 	}
 #endif

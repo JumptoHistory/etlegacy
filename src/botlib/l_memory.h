@@ -36,7 +36,7 @@
 #ifndef INCLUDE_L_MEMORY_H
 #define INCLUDE_L_MEMORY_H
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 //  #define MEMDEBUG
 #endif
 

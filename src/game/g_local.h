@@ -42,6 +42,12 @@
 
 //==================================================================
 
+/**
+ * @def GAMEVERSION
+ * @brief The "gameversion" client command will print this plus compile date.
+ */
+#define GAMEVERSION         "legacy"
+
 #define BODY_QUEUE_SIZE     8
 
 #define EVENT_VALID_MSEC    300
@@ -668,9 +674,6 @@ typedef struct
 	float oldmu;
 	float oldsigma;
 #endif
-#ifdef FEATURE_PRESTIGE
-	int prestige;
-#endif
 
 	// MAPVOTE
 	int mapVotedFor[3];
@@ -1140,7 +1143,7 @@ typedef struct level_locals_s
 
 	fileHandle_t logFile;
 
-	qboolean etLegacyServer;
+	qboolean legacyServer;
 
 	char rawmapname[MAX_QPATH];
 
@@ -1163,6 +1166,7 @@ typedef struct level_locals_s
 	int numNonSpectatorClients;                 ///< includes connecting clients
 	int numPlayingClients;                      ///< connected, non-spectators
 	int sortedClients[MAX_CLIENTS];             ///< sorted by score
+	int follow1, follow2;                       ///< clientNums for auto-follow spectators
 
 	int warmupModificationCount;                ///< for detecting if g_warmup is changed
 
@@ -1200,7 +1204,7 @@ typedef struct level_locals_s
 	/// player/AI model scripting (server repository)
 	animScriptData_t animScriptData;
 
-	int lastRestartTime;
+	qboolean lastRestartTime;
 
 	int numFinalDead[2];                        ///< unable to respawn and in limbo (per team)
 	int numOidTriggers;
@@ -1312,13 +1316,8 @@ typedef struct level_locals_s
 	float alliesProb;
 	float axisProb;
 	float mapProb;             ///< win prob of Axis team
-#endif
-
-#ifdef FEATURE_DBMS
 	database_t database;
 #endif
-
-	int frameStartTime;
 } level_locals_t;
 
 /**
@@ -1369,14 +1368,14 @@ void G_ParseField(const char *key, const char *value, gentity_t *ent);
 // g_cmds.c
 void Cmd_Score_f(gentity_t *ent);
 void StopFollowing(gentity_t *ent);
-void G_TeamDataForString(const char *teamstr, int clientNum, team_t *team, spectatorState_t *sState);
+void G_TeamDataForString(const char *teamstr, int clientNum, team_t *team, spectatorState_t *sState, int *specClient);
 qboolean SetTeam(gentity_t *ent, const char *s, qboolean force, weapon_t w1, weapon_t w2, qboolean setweapons);
 void G_SetClientWeapons(gentity_t *ent, weapon_t w1, weapon_t w2, qboolean updateclient);
 void Cmd_FollowCycle_f(gentity_t *ent, int dir, qboolean skipBots);
 qboolean G_FollowSame(gentity_t *ent);
 void Cmd_Kill_f(gentity_t *ent);
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 #ifdef FEATURE_OMNIBOT
 void Cmd_SwapPlacesWithBot_f(gentity_t *ent, int botNum);
 #endif
@@ -1834,7 +1833,7 @@ extern vmCvar_t g_OmniBotPath;
 extern vmCvar_t g_OmniBotEnable;
 extern vmCvar_t g_OmniBotFlags;
 extern vmCvar_t g_OmniBotPlaying;
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 extern vmCvar_t g_allowBotSwap;
 #endif
 #endif
@@ -1989,7 +1988,6 @@ extern vmCvar_t vote_allow_restartcampaign;
 extern vmCvar_t vote_allow_nextcampaign;
 extern vmCvar_t vote_allow_poll;
 extern vmCvar_t vote_allow_maprestart;
-extern vmCvar_t vote_allow_cointoss;
 
 extern vmCvar_t g_debugSkills;
 extern vmCvar_t g_heavyWeaponRestriction;
@@ -2084,10 +2082,6 @@ extern vmCvar_t g_extendedNames;
 extern vmCvar_t g_skillRating;
 #endif
 
-#ifdef FEATURE_PRESTIGE
-extern vmCvar_t g_prestige;
-#endif
-
 #ifdef FEATURE_MULTIVIEW
 extern vmCvar_t g_multiview;
 #endif
@@ -2096,7 +2090,6 @@ extern vmCvar_t g_multiview;
 #define STICKYCHARGE_SELFKILL 1 // keep charge after selfkill, mortal self damage, teamkill, mortal world damage
 #define STICKYCHARGE_ANYDEATH 2 // keep charge after any death (for eg. death by enemy)
 extern vmCvar_t g_stickyCharge;
-extern vmCvar_t g_xpSaver;
 
 /**
  * @struct GeoIPTag
@@ -2254,6 +2247,7 @@ void G_UpdateTeamMapData(void);
 void G_SetupFrustum(gentity_t *ent);
 void G_SetupFrustum_ForBinoculars(gentity_t *ent);
 qboolean G_VisibleFromBinoculars(gentity_t *viewer, gentity_t *ent, vec3_t origin);
+qboolean G_VisibleFromBinoculars_Box(gentity_t *viewer, gentity_t *ent, vec3_t origin, vec3_t mins, vec3_t maxs);
 
 void G_LogTeamKill(gentity_t *ent, weapon_t weap);
 void G_LogDeath(gentity_t *ent, weapon_t weap);
@@ -2380,7 +2374,7 @@ void G_ReloadConfig(void);
 void G_addStats(gentity_t *targ, gentity_t *attacker, int damage, meansOfDeath_t mod);
 void G_addStatsHeadShot(gentity_t *attacker, meansOfDeath_t mod);
 int G_checkServerToggle(vmCvar_t *cv);
-char *G_createStats(gentity_t *ent);
+char *G_createStats(gentity_t *refEnt);
 void G_deleteStats(int nClient);
 qboolean G_desiredFollow(gentity_t *ent, int nTeam);
 void G_globalSound(const char *sound);
@@ -2395,11 +2389,6 @@ void G_resetModeState(void);
 void G_resetRoundState(void);
 void G_spawnPrintf(int print_type, int print_time, gentity_t *owner);
 void G_statsPrint(gentity_t *ent, int nType);
-
-#ifdef FEATURE_DBMS
-int G_DB_Init(void);
-int G_DB_DeInit(void);
-#endif
 
 #ifdef FEATURE_RATING
 // g_skillrating.c
@@ -2423,7 +2412,9 @@ typedef struct srData_s
 	int time_allies;
 } srData_t;
 
-int G_SkillRatingDBCheck(char *db_path, int db_mode);
+int G_SkillRatingDB_Init(void);
+int G_SkillRatingDB_DeInit(void);
+int G_SkillRatingDB_Check(char *db_path, int db_mode);
 int G_SkillRatingPrepareMatchRating(void);
 int G_SkillRatingGetMatchRating(srData_t *sr_data);
 int G_SkillRatingSetMatchRating(srData_t *sr_data);
@@ -2433,28 +2424,6 @@ void G_SkillRatingSetClientRating(gclient_t *cl);
 float G_SkillRatingGetMapRating(char *mapname);
 void G_SkillRatingSetMapRating(char *mapname, int winner);
 #endif
-
-#ifdef FEATURE_PRESTIGE
-// g_prestige.c
-typedef struct prData_s
-{
-	const unsigned char *guid;
-	int prestige;
-	int streak;
-	int skillpoints[SK_NUM_SKILLS];
-} prData_t;
-
-int G_PrestigeDBCheck(char *db_path, int db_mode);
-void G_GetClientPrestige(gclient_t *cl);
-void G_SetClientPrestige(gclient_t *cl, qboolean streakUp);
-int G_ReadPrestige(prData_t *pr_data);
-int G_WritePrestige(prData_t *pr_data);
-#endif
-
-int G_XPSaver_CheckDB(char *db_path, int db_mode);
-void G_XPSaver_Load(gclient_t *cl);
-void G_XPSaver_Store(gclient_t *cl);
-int G_XPSaver_Clear();
 
 // g_stats.c
 void G_UpgradeSkill(gentity_t *ent, skillType_t skill);
@@ -2569,7 +2538,6 @@ int G_RestartCampaign_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, cha
 int G_NextCampaign_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2, qboolean fRefereeCmd);
 int G_Poll_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2, qboolean fRefereeCmd);
 int G_Config_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2, qboolean fRefereeCmd);
-int G_CoinToss_v(gentity_t *ent, unsigned int dwVoteIndex, char *arg, char *arg2, qboolean fRefereeCmd);
 
 void G_LinkDebris(void);
 void G_LinkDamageParents(void);
@@ -2671,8 +2639,8 @@ qboolean G_LandmineSnapshotCallback(int entityNum, int clientNum);
 #define MULTI_TRIGGER_MEDICONLY         64
 #define MULTI_TRIGGER_ENGINEERONLY      128
 #define MULTI_TRIGGER_COVERTOPSONLY     256
-#define MULTI_TRIGGER_DISGUISEDSONLY    512  ///< mod specific only
-#define MULTI_TRIGGER_OBJECTIVEONLY     1024 ///< mod specific only
+#define MULTI_TRIGGER_DISGUISEDSONLY    512  ///< legacy only
+#define MULTI_TRIGGER_OBJECTIVEONLY     1024 ///< legacy only
 
 #define TARGET_PUSH_BOUNCEPAD           1
 

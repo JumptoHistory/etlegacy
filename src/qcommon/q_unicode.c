@@ -127,17 +127,15 @@ int Q_UTF8_Strlen(const char *str)
 }
 
 /**
- * @brief Q_UTF8_PrintStrlen2
+ * @brief Q_UTF8_PrintStrlen
  * @param[in] str
- * @param[in] length string length
  * @return
  */
-int Q_UTF8_PrintStrlenExt(const char *str, int length)
+int Q_UTF8_PrintStrlen(const char *str)
 {
-	int        l      = 0;
-	const char *start = str;
+	int l = 0;
 
-	while (*str && (str - start) < length)
+	while (*str)
 	{
 		if (Q_IsColorString(str))
 		{
@@ -155,16 +153,6 @@ int Q_UTF8_PrintStrlenExt(const char *str, int length)
 	}
 
 	return l;
-}
-
-/**
- * @brief Q_UTF8_PrintStrlen
- * @param[in] str
- * @return
- */
-int Q_UTF8_PrintStrlen(const char *str)
-{
-	return Q_UTF8_PrintStrlenExt(str, MAX_QINT);
 }
 
 /**
@@ -339,7 +327,7 @@ static void shiftbitsright(unsigned char *p, unsigned long num, unsigned long by
 			*p = 0;
 		}
 
-		*p &= ((unsigned long)~0x00) >> num;
+		*p &= (~0x00) >> num;
 
 		return;
 	}

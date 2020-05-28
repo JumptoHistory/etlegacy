@@ -559,51 +559,69 @@ void Console_Key(int key)
 	{
 		con.highlightOffset = 0;
 
-#if SLASH_COMMAND
-		// if not in the game explicitly prepend a slash if needed
-		if (cls.state != CA_ACTIVE && g_consoleField.buffer[0] != '\\'
-		    && g_consoleField.buffer[0] != '/')
+		if (SLASH_COMMAND)
 		{
-			char temp[MAX_STRING_CHARS];
+			// if not in the game explicitly prepend a slash if needed
+			if (cls.state != CA_ACTIVE && g_consoleField.buffer[0] != '\\'
+				&& g_consoleField.buffer[0] != '/')
+			{
+				char temp[MAX_STRING_CHARS];
 
-			Q_strncpyz(temp, g_consoleField.buffer, sizeof(temp));
-			Com_sprintf(g_consoleField.buffer, sizeof(g_consoleField.buffer), "\\%s", temp);
-			g_consoleField.cursor++;
-		}
-#endif
+				Q_strncpyz(temp, g_consoleField.buffer, sizeof(temp));
+				Com_sprintf(g_consoleField.buffer, sizeof(g_consoleField.buffer), "\\%s", temp);
+				g_consoleField.cursor++;
+			}
+			Com_Printf("]%s\n", g_consoleField.buffer);
 
-		Com_Printf("]%s\n", g_consoleField.buffer);
-
-#if SLASH_COMMAND
-		// leading slash is an explicit command
-		if (g_consoleField.buffer[0] == '\\' || g_consoleField.buffer[0] == '/')
-		{
-			Cbuf_AddText(g_consoleField.buffer + 1);      // valid command
-			Cbuf_AddText("\n");
+			// leading slash is an explicit command
+			if (g_consoleField.buffer[0] == '\\' || g_consoleField.buffer[0] == '/')
+			{
+				Cbuf_AddText(g_consoleField.buffer + 1);      // valid command
+				Cbuf_AddText("\n");
+			}
+			else
+			{
+				// other text will be chat messages
+				if (!g_consoleField.buffer[0])
+				{
+					return; // empty lines just scroll the console without adding to history
+				}
+				else
+				{
+					Cbuf_AddText("cmd say ");
+					Cbuf_AddText(g_consoleField.buffer);
+					Cbuf_AddText("\n");
+				}
+			}
 		}
 		else
 		{
-			// other text will be chat messages
+			Com_Printf("\\%s\n", g_consoleField.buffer);
+
 			if (!g_consoleField.buffer[0])
 			{
 				return; // empty lines just scroll the console without adding to history
 			}
-			else
+			else if (g_consoleField.buffer[0] == '\\' || g_consoleField.buffer[0] == '/')
 			{
+				Cbuf_AddText(g_consoleField.buffer + 1);      // valid command
+				Cbuf_AddText("\n");
+			}
+			else if (g_consoleField.buffer[0] == '"') {
 				Cbuf_AddText("cmd say ");
 				Cbuf_AddText(g_consoleField.buffer);
 				Cbuf_AddText("\n");
 			}
+			else if (g_consoleField.buffer[0] == '\'') {
+				Cbuf_AddText("cmd vsay ");
+				Cbuf_AddText(g_consoleField.buffer + 1);
+				Cbuf_AddText("\n");
+			}
+			else {
+				Cbuf_AddText(g_consoleField.buffer);      // valid command
+				Cbuf_AddText("\n");
+			}
 		}
-#else
-		Cbuf_AddText(g_consoleField.buffer);      // valid command
-		Cbuf_AddText("\n");
-
-		if (!g_consoleField.buffer[0])
-		{
-			return; // empty lines just scroll the console without adding to history
-		}
-#endif
 
 		// copy line to history buffer
 		historyEditLines[nextHistoryLine % COMMAND_HISTORY] = g_consoleField;
@@ -1319,13 +1337,8 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
 		{
 			return;
 		}
-
 		Con_ToggleConsole_f();
-
-		if (!keys[K_LCTRL].down && !keys[K_RCTRL].down && !keys[K_LALT].down && !keys[K_RALT].down)
-		{
-			Key_ClearStates();
-		}
+		Key_ClearStates();
 
 		// the console key should never be used as a char
 		consoleButtonWasPressed = qtrue;
@@ -1362,11 +1375,7 @@ void CL_KeyEvent(int key, qboolean down, unsigned time)
 			else
 			{
 				Con_ToggleConsole_f();
-
-				if (!keys[K_LCTRL].down && !keys[K_RCTRL].down && !keys[K_LALT].down && !keys[K_RALT].down)
-				{
-					Key_ClearStates();
-				}
+				Key_ClearStates();
 			}
 
 			return;
@@ -1562,11 +1571,12 @@ void Key_ClearStates(void)
 
 	anykeydown = 0;
 
-	for (i = 0; i < MAX_KEYS; i++)
+	for (i = 0 ; i < MAX_KEYS ; i++)
 	{
 		if (keys[i].down)
 		{
 			CL_KeyEvent(i, qfalse, 0);
+
 		}
 		keys[i].down    = 0;
 		keys[i].repeats = 0;

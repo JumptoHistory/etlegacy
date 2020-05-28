@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Wolfenstein: Enemy Territory GPL Source Code
  * Copyright (C) 1999-2010 id Software LLC, a ZeniMax Media company.
  *
@@ -424,16 +424,10 @@ qboolean G_CanPickupWeapon(weapon_t weapon, gentity_t *ent)
 		return qfalse;
 	}
 
-	// get an equivalent weapon if the client team is different of the weapon team, if not keep the current
+	// get an equivalent weapon if the cleint team is different of the weapon team, if not keep the current
 	if (ent->client->sess.sessionTeam != GetWeaponTableData(weapon)->team && GetWeaponTableData(weapon)->weapEquiv)
 	{
 		weapon = GetWeaponTableData(weapon)->weapEquiv;
-	}
-
-	// single weapon restrictions
-	if (G_IsWeaponDisabled(ent, weapon))
-	{
-		return qfalse;
 	}
 
 	return BG_WeaponIsPrimaryForClassAndTeam(ent->client->sess.playerType, ent->client->sess.sessionTeam, weapon);
@@ -913,7 +907,6 @@ gentity_t *LaunchItem(gitem_t *item, vec3_t origin, vec3_t velocity, int ownerNu
 	{
 		dropped->think     = G_MagicSink;
 		dropped->nextthink = level.time + 30000;
-		dropped->s.time    = level.time + 30000; // for simple items colouring
 	}
 
 	dropped->flags = FL_DROPPED_ITEM;
@@ -1125,88 +1118,36 @@ void G_BounceItem(gentity_t *ent, trace_t *trace)
 {
 	vec3_t velocity;
 	float  dot;
-	int    hitTime = (int)(level.previousTime + (level.time - level.previousTime) * trace->fraction);
+	int    hitTime = level.previousTime + (level.time - level.previousTime) * trace->fraction;
 
 	// reflect the velocity on the trace plane
+
 	BG_EvaluateTrajectoryDelta(&ent->s.pos, hitTime, velocity, qfalse, ent->s.effect2Time);
 	dot = DotProduct(velocity, trace->plane.normal);
 	VectorMA(velocity, -2 * dot, trace->plane.normal, ent->s.pos.trDelta);
 
-	if (trace->plane.normal[2] >= 0.7f || VectorLength(ent->s.pos.trDelta) < 16)
+	// cut the velocity to keep from bouncing forever
+	VectorScale(ent->s.pos.trDelta, ent->physicsBounce, ent->s.pos.trDelta);
+
+	// check for stop
+	if (trace->plane.normal[2] > 0 && ent->s.pos.trDelta[2] < 40)
 	{
-		// cut the velocity to keep from bouncing forever
-		VectorScale(ent->s.pos.trDelta, ent->physicsBounce, ent->s.pos.trDelta);
-
-		if (VectorLength(ent->s.pos.trDelta) < 40 && trace->plane.normal[2] > 0)
+		vectoangles(trace->plane.normal, ent->s.angles);
+		ent->s.angles[0] += 90;
+		if (ent->s.angles[0] > 0.0f && ent->s.angles[0] < 50.0f)
 		{
-			if (trace->plane.normal[2] > 0.7f &&
-			    (trace->plane.normal[0] != 0.0f || trace->plane.normal[1] != 0.0f ||
-			     trace->plane.normal[2] != 1.0f))
-			{
-				vec3_t  forward, start, end;
-				trace_t tr;
-				vec3_t  outAxis[3];
-
-				AngleVectors(ent->r.currentAngles, forward, NULL, NULL);
-				VectorCopy(trace->plane.normal, outAxis[2]);
-				ProjectPointOnPlane(outAxis[0], forward, outAxis[2]);
-
-				if (!VectorNormalize(outAxis[0]))
-				{
-					AngleVectors(ent->r.currentAngles, NULL, NULL, forward);
-					ProjectPointOnPlane(outAxis[0], forward, outAxis[2]);
-					VectorNormalize(outAxis[0]);
-				}
-
-				CrossProduct(outAxis[0], outAxis[2], outAxis[1]);
-
-				VectorNegate(outAxis[1], outAxis[1]);
-
-				AxisToAngles(outAxis, ent->r.currentAngles);
-				VectorMA(trace->endpos, -64.f, trace->plane.normal, end);
-				VectorMA(trace->endpos, 1.f, trace->plane.normal, start);
-
-				if (ent->s.eType == ET_CORPSE)
-				{
-					trap_TraceCapsule(&tr, start, NULL, NULL, end, ent->s.number, MASK_SOLID);
-				}
-				else
-				{
-					trap_Trace(&tr, start, NULL, NULL, end, ent->s.number, MASK_SOLID);
-				}
-
-				if (!tr.startsolid)
-				{
-					VectorMA(trace->endpos, tr.fraction * -64.f, trace->plane.normal, trace->endpos);
-				}
-
-				// make sure it is off ground
-				VectorMA(trace->endpos, 1.0f, trace->plane.normal, trace->endpos);
-			}
-			else
-			{
-				trace->endpos[2] += 1.0f;
-			}
-
-			G_SetAngle(ent, ent->r.currentAngles);
-			SnapVector(trace->endpos);
-			G_SetOrigin(ent, trace->endpos);
-			ent->s.groundEntityNum = trace->entityNum;
-
-			if (ent->s.groundEntityNum != ENTITYNUM_WORLD)
-			{
-				ent->s.pos.trType = TR_GRAVITY_PAUSED;  // allow entity to be affected by gravity again
-			}
-
-			return;
+			// align items on inclined ground
+			G_SetAngle(ent, ent->s.angles);
+			trace->endpos[2] -= (tan(DEG2RAD(ent->s.angles[0])) * ITEM_RADIUS);
 		}
-
-		// bounce the angles
-		if (ent->s.apos.trType != TR_STATIONARY)
+		else
 		{
-			VectorScale(ent->s.apos.trDelta, ent->physicsBounce, ent->s.apos.trDelta);
-			ent->s.apos.trTime = level.time;
+			trace->endpos[2] += 1.0f;    // make sure it is off ground
 		}
+		SnapVector(trace->endpos);
+		G_SetOrigin(ent, trace->endpos);
+		ent->s.groundEntityNum = trace->entityNum;
+		return;
 	}
 
 	VectorAdd(ent->r.currentOrigin, trace->plane.normal, ent->r.currentOrigin);
@@ -1270,7 +1211,7 @@ void G_RunItem(gentity_t *ent)
 	vec3_t  origin;
 	trace_t tr;
 	int     contents;
-	int     mask = ent->clipmask ? ent->clipmask : MASK_SOLID;
+	int     mask;
 
 	// if groundentity has been set to -1, it may have been pushed off an edge
 	if (ent->s.groundEntityNum == -1)
@@ -1282,39 +1223,13 @@ void G_RunItem(gentity_t *ent)
 		}
 	}
 
-	if (ent->s.pos.trType == TR_STATIONARY) // check think function
+	if (ent->s.pos.trType == TR_STATIONARY || ent->s.pos.trType == TR_GRAVITY_PAUSED) // check think function
 	{
 		G_RunThink(ent);
 		return;
 	}
-	else if (ent->s.pos.trType == TR_GRAVITY_PAUSED)    // check if ent can start falling again
-	{
-		vec3_t newOrigin;
 
-		VectorCopy(ent->r.currentOrigin, newOrigin);
-		newOrigin[2] -= 4;
-
-		if (ent->s.eType == ET_CORPSE)
-		{
-			trap_TraceCapsule(&tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, newOrigin, ent->s.number, mask);
-		}
-		else
-		{
-			trap_Trace(&tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, newOrigin, ent->s.number, mask);
-		}
-
-		if (tr.fraction == 1.f && !tr.startsolid)
-		{
-			VectorClear(ent->s.pos.trDelta);
-			ent->s.pos.trType      = TR_GRAVITY;
-			ent->s.pos.trTime      = level.time;
-			ent->s.groundEntityNum = -1;
-		}
-
-		G_RunThink(ent);
-		return;
-	}
-	else if (ent->s.pos.trType == TR_LINEAR && (!ent->clipmask && !ent->r.contents))
+	if (ent->s.pos.trType == TR_LINEAR && (!ent->clipmask && !ent->r.contents))
 	{
 		// check think function
 		G_RunThink(ent);
@@ -1325,16 +1240,16 @@ void G_RunItem(gentity_t *ent)
 	BG_EvaluateTrajectory(&ent->s.pos, level.time, origin, qfalse, ent->s.effect2Time);
 
 	// trace a line from the previous position to the current position
-	if (ent->s.eType == ET_CORPSE)
+	if (ent->clipmask)
 	{
-		trap_TraceCapsule(&tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, origin,
-		                  ent->r.ownerNum, mask);
+		mask = ent->clipmask;
 	}
 	else
 	{
-		trap_Trace(&tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, origin,
-		           ent->r.ownerNum, mask);
+		mask = MASK_SOLID;
 	}
+	trap_Trace(&tr, ent->r.currentOrigin, ent->r.mins, ent->r.maxs, origin,
+	           ent->r.ownerNum, mask);
 
 	if (ent->isProp && ent->takedamage)
 	{
@@ -1348,7 +1263,7 @@ void G_RunItem(gentity_t *ent)
 		tr.fraction = 0;
 	}
 
-	trap_LinkEntity(ent);
+	trap_LinkEntity(ent);   // FIXME: avoid this for stationary?
 
 	// check think function
 	G_RunThink(ent);

@@ -1413,6 +1413,12 @@ void Props_Chair_Think(gentity_t *self)
 		self->active = qfalse;
 
 		self->think = Just_Got_Thrown;
+
+		if (self->s.pos.trType != TR_GRAVITY)
+		{
+			self->s.pos.trType = TR_GRAVITY;
+			self->s.pos.trTime = level.time;
+		}
 	}
 
 	// we assume groundentity will never change from under a stationary object.

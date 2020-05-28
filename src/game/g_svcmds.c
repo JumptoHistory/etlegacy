@@ -787,8 +787,6 @@ void Svcmd_ForceTeam_f(void)
 {
 	gclient_t *cl;
 	char      str[MAX_TOKEN_CHARS];
-	int w = 0; 
-	int w2 = 0;
 
 	// find the player
 	trap_Argv(1, str, sizeof(str));
@@ -800,28 +798,7 @@ void Svcmd_ForceTeam_f(void)
 
 	// set the team
 	trap_Argv(2, str, sizeof(str));
-
-	// "swap" team, try to keep the previous selected weapons or equivalent if no one were selected
-	if (cl->sess.sessionTeam != TEAM_SPECTATOR)
-	{
-		// primary weapon
-		w = cl->sess.playerWeapon;
-
-		if (GetWeaponTableData(cl->sess.playerWeapon)->weapEquiv)
-		{
-			w = GetWeaponTableData(cl->sess.playerWeapon)->weapEquiv;
-		}
-
-		// secondary weapon
-		w2 = cl->sess.playerWeapon2;
-
-		if (GetWeaponTableData(cl->sess.playerWeapon2)->weapEquiv)
-		{
-			w2 = GetWeaponTableData(cl->sess.playerWeapon2)->weapEquiv;
-		}
-	}
-
-	SetTeam(&g_entities[cl - level.clients], str, qtrue, w, w2, qtrue);
+	SetTeam(&g_entities[cl - level.clients], str, qtrue, cl->sess.playerWeapon, cl->sess.playerWeapon2, qtrue);
 }
 
 /**
@@ -1293,7 +1270,7 @@ static void Svcmd_Die(void)
 	return;
 }
 
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 extern animStringItem_t animEventTypesStr[];
 
 /**
@@ -1894,24 +1871,24 @@ static void Svcmd_Kick_f(void)
 					{
 
 						// kick but dont ban bots, they arent that lame
-						if ((g_entities[cl - level.clients].r.svFlags & SVF_BOT))
+						if ((g_entities[cl->ps.clientNum].r.svFlags & SVF_BOT))
 						{
 							timeout = 0;
 						}
 
-						trap_DropClient(cl - level.clients, "player kicked", timeout);
+						trap_DropClient(cl->ps.clientNum, "player kicked", timeout);
 					}
 					else
 					{
-						trap_DropClient(cl - level.clients, "player kicked", 0);
+						trap_DropClient(cl->ps.clientNum, "player kicked", 0);
 
 						// kick but dont ban bots, they arent that lame
-						if (!(g_entities[cl - level.clients].r.svFlags & SVF_BOT))
+						if (!(g_entities[cl->ps.clientNum].r.svFlags & SVF_BOT))
 						{
 							char *ip;
 							char userinfo[MAX_INFO_STRING];
 
-							trap_GetUserinfo(cl - level.clients, userinfo, sizeof(userinfo));
+							trap_GetUserinfo(cl->ps.clientNum, userinfo, sizeof(userinfo));
 							ip = Info_ValueForKey(userinfo, "ip");
 							AddIPBan(ip);
 						}
@@ -1919,7 +1896,7 @@ static void Svcmd_Kick_f(void)
 				}
 				else
 				{
-					trap_DropClient(cl - level.clients, "player kicked", 0);
+					trap_DropClient(cl->ps.clientNum, "player kicked", 0);
 				}
 			}
 		}
@@ -1941,23 +1918,23 @@ static void Svcmd_Kick_f(void)
 			if (USE_ENGINE_BANLIST)
 			{
 				// kick but dont ban bots, they arent that lame
-				if ((g_entities[cl - level.clients].r.svFlags & SVF_BOT))
+				if ((g_entities[cl->ps.clientNum].r.svFlags & SVF_BOT))
 				{
 					timeout = 0;
 				}
-				trap_DropClient(cl - level.clients, "player kicked", timeout);
+				trap_DropClient(cl->ps.clientNum, "player kicked", timeout);
 			}
 			else
 			{
-				trap_DropClient(cl - level.clients, "player kicked", 0);
+				trap_DropClient(cl->ps.clientNum, "player kicked", 0);
 
 				// kick but dont ban bots, they arent that lame
-				if (!(g_entities[cl - level.clients].r.svFlags & SVF_BOT))
+				if (!(g_entities[cl->ps.clientNum].r.svFlags & SVF_BOT))
 				{
 					char *ip;
 					char userinfo[MAX_INFO_STRING];
 
-					trap_GetUserinfo(cl - level.clients, userinfo, sizeof(userinfo));
+					trap_GetUserinfo(cl->ps.clientNum, userinfo, sizeof(userinfo));
 					ip = Info_ValueForKey(userinfo, "ip");
 					AddIPBan(ip);
 				}
@@ -1965,7 +1942,7 @@ static void Svcmd_Kick_f(void)
 		}
 		else
 		{
-			trap_DropClient(cl - level.clients, "player kicked", 0);
+			trap_DropClient(cl->ps.clientNum, "player kicked", 0);
 		}
 	}
 }
@@ -2024,20 +2001,20 @@ static void Svcmd_KickNum_f(void)
 	if (USE_ENGINE_BANLIST)
 	{
 		// kick but dont ban bots, they arent that lame
-		if ((g_entities[cl - level.clients].r.svFlags & SVF_BOT))
+		if ((g_entities[cl->ps.clientNum].r.svFlags & SVF_BOT))
 		{
 			timeout = 0;
 		}
-		trap_DropClient(cl - level.clients, "player kicked", timeout);
+		trap_DropClient(cl->ps.clientNum, "player kicked", timeout);
 	}
 	else
 	{
-		trap_DropClient(cl - level.clients, "player kicked", 0);
+		trap_DropClient(cl->ps.clientNum, "player kicked", 0);
 
 		// kick but dont ban bots, they arent that lame
-		if (!(g_entities[cl - level.clients].r.svFlags & SVF_BOT))
+		if (!(g_entities[cl->ps.clientNum].r.svFlags & SVF_BOT))
 		{
-			trap_GetUserinfo(cl - level.clients, userinfo, sizeof(userinfo));
+			trap_GetUserinfo(cl->ps.clientNum, userinfo, sizeof(userinfo));
 			ip = Info_ValueForKey(userinfo, "ip");
 			AddIPBan(ip);
 		}
@@ -2122,10 +2099,6 @@ void CC_svcvar(void)
 	if (trap_Argc() == 5)
 	{
 		trap_Argv(4, cvarValue2, sizeof(cvarValue2));
-	}
-	else
-	{
-		cvarValue2[0] = '\0';
 	}
 
 	// is this cvar already in the array?.. (maybe they have a double entry)
@@ -2397,8 +2370,8 @@ void Svcmd_CSInfo_f(void)
 		case CS_FILTERCAMS:
 			str = "CS_FILTERCAMS";
 			break;
-		case CS_MODINFO:
-			str = "CS_MODINFO";
+		case CS_LEGACYINFO:
+			str = "CS_LEGACYINFO";
 			break;
 		case CS_TEAMRESTRICTIONS:
 			str = "CS_TEAMRESTRICTIONS";
@@ -2622,7 +2595,7 @@ static consoleCommandTable_t consoleCommandTable[] =
 	{ "burn",                       Svcmd_Burn                    },
 	{ "pip",                        Svcmd_Pip                     },
 	{ "throw",                      Svcmd_Fling                   },
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 	{ "ae",                         Svcmd_PlayerAnimEvent         },    //ae <playername> <animEvent>
 #endif
 	{ "ref",                        Svcmd_Ref_f                   },    // console also gets ref commands

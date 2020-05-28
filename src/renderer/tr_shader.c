@@ -181,17 +181,73 @@ static unsigned NameToAFunc(const char *funcname)
 	{
 		return GLS_ATEST_GT_0;
 	}
+	else if (!Q_stricmp(funcname, "LT16"))
+	{
+		return GLS_ATEST_LT_16;
+	}
+	else if (!Q_stricmp(funcname, "GE16"))
+	{
+		return GLS_ATEST_GE_16;
+	}
+	else if (!Q_stricmp(funcname, "LT32"))
+	{
+		return GLS_ATEST_LT_32;
+	}
+	else if (!Q_stricmp(funcname, "GE32"))
+	{
+		return GLS_ATEST_GE_32;
+	}
+	else if (!Q_stricmp(funcname, "LT64"))
+	{
+		return GLS_ATEST_LT_64;
+	}
+	else if (!Q_stricmp(funcname, "GE64"))
+	{
+		return GLS_ATEST_GE_64;
+	}
 	else if (!Q_stricmp(funcname, "LT128"))
 	{
-		return GLS_ATEST_LT_80;
+		return GLS_ATEST_LT_128;
 	}
 	else if (!Q_stricmp(funcname, "GE128"))
 	{
-		return GLS_ATEST_GE_80;
+		return GLS_ATEST_GE_128;
 	}
 
 	Ren_Warning("WARNING: invalid alphaFunc name '%s' in shader '%s'\n", funcname, shader.name);
 	return 0;
+}
+
+static unsigned NameToDepthAFunc(const char *funcname)
+{
+	if (!Q_stricmp(funcname, "GT0"))
+	{
+		return GLS_DEPTHMASK_ATEST_GT_0;
+	}
+	if (!Q_stricmp(funcname, "GE16"))
+	{
+		return GLS_DEPTHMASK_ATEST_GE_16;
+	}
+	if (!Q_stricmp(funcname, "GE32"))
+	{
+		return GLS_DEPTHMASK_ATEST_GE_32;
+	}
+	if (!Q_stricmp(funcname, "GE64"))
+	{
+		return GLS_DEPTHMASK_ATEST_GE_64;
+	}
+	if (!Q_stricmp(funcname, "GE128"))
+	{
+		return GLS_DEPTHMASK_ATEST_GE_128;
+	}
+	if (!Q_stricmp(funcname, "GE192"))
+	{
+		return GLS_DEPTHMASK_ATEST_GE_192;
+	}
+	if (!Q_stricmp(funcname, "GE224"))
+	{
+		return GLS_DEPTHMASK_ATEST_GE_224;
+	}
 }
 
 /**
@@ -880,6 +936,18 @@ static qboolean ParseStage(shaderStage_t *stage, char **text)
 			}
 
 			atestBits = NameToAFunc(token);
+		}
+		// depthwriteAlphaFunc <func>
+		else if (!Q_stricmp(token, "depthwriteAlphaFunc"))
+		{
+		token = COM_ParseExt(text, qfalse);
+		if (!token[0])
+		{
+			Ren_Warning("WARNING: missing parameter for 'depthAlphaFunc' keyword in shader '%s'\n", shader.name);
+			return qfalse;
+		}
+
+		atestBits |= NameToDepthAFunc(token);
 		}
 		// depthFunc <func>
 		else if (!Q_stricmp(token, "depthfunc"))
@@ -2108,14 +2176,27 @@ static qboolean ParseShader(char **text)
 		else if (!Q_stricmpn(token, "implicit", 8))
 		{
 			// set implicit mapping state
-			if (!Q_stricmp(token, "implicitBlend"))
+			if (!Q_stricmp(token, "implicitBlendThickMask"))
 			{
-				implicitStateBits = GLS_DEPTHMASK_TRUE | GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA;
+				implicitStateBits = GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA | GLS_DEPTHMASK_ATEST_GE_64;
 				implicitCullType  = CT_TWO_SIDED;
+				shader.sort = SS_BLEND0;
+			}
+			else if (!Q_stricmp(token, "implicitBlendThinMask"))
+			{
+				implicitStateBits = GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA | (r_resolutionScale->value >= 1.5 || r_fboMultisample->integer == -1 ? GLS_DEPTHMASK_ATEST_GE_192 : GLS_DEPTHMASK_ATEST_GE_224);
+				implicitCullType  = CT_TWO_SIDED;
+				shader.sort = SS_BLEND0;
+			}
+			else if (!Q_stricmp(token, "implicitBlend"))
+			{
+				implicitStateBits = GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA | GLS_DEPTHMASK_ATEST_GE_128;
+				implicitCullType  = CT_TWO_SIDED;
+				shader.sort = SS_BLEND0;
 			}
 			else if (!Q_stricmp(token, "implicitMask"))
 			{
-				implicitStateBits = GLS_DEPTHMASK_TRUE | GLS_ATEST_GE_80;
+				implicitStateBits = GLS_DEPTHMASK_TRUE | GLS_ATEST_GE_128;
 				implicitCullType  = CT_TWO_SIDED;
 			}
 			else      // "implicitMap"
@@ -2217,21 +2298,24 @@ static void ComputeStageIteratorFunc(void)
 	}
 
 	// see if this can go into an optimized LM, multitextured path
-	if (shader.numUnfoggedPasses == 1)
+	if (qglActiveTextureARB)
 	{
-		if ((stages[0].rgbGen == CGEN_IDENTITY) && (stages[0].alphaGen == AGEN_IDENTITY))
+		if (shader.numUnfoggedPasses == 1)
 		{
-			if (stages[0].bundle[0].tcGen == TCGEN_TEXTURE &&
-			    stages[0].bundle[1].tcGen == TCGEN_LIGHTMAP)
+			if ((stages[0].rgbGen == CGEN_IDENTITY) && (stages[0].alphaGen == AGEN_IDENTITY))
 			{
-				if (!shader.polygonOffset)
+				if (stages[0].bundle[0].tcGen == TCGEN_TEXTURE &&
+					stages[0].bundle[1].tcGen == TCGEN_LIGHTMAP)
 				{
-					if (!shader.numDeforms)
+					if (!shader.polygonOffset)
 					{
-						if (shader.multitextureEnv)
+						if (!shader.numDeforms)
 						{
-							shader.optimalStageIteratorFunc = RB_StageIteratorLightmappedMultitexture;
-							return;
+							if (shader.multitextureEnv)
+							{
+								shader.optimalStageIteratorFunc = RB_StageIteratorLightmappedMultitexture;
+								return;
+							}
 						}
 					}
 				}
@@ -3823,9 +3907,9 @@ static void BuildShaderChecksumLookup(void)
 
 #define MAX_SHADER_FILES    4096
 /**
- * @brief Finds and loads all .shader files, combining them into
- * a single large text block that can be scanned for shader names
- */
+* @brief Finds and loads all .shader files, combining them into
+* a single large text block that can be scanned for shader names
+*/
 static void ScanAndLoadShaderFiles(void)
 {
 	char filename[MAX_QPATH];
@@ -3836,9 +3920,13 @@ static void ScanAndLoadShaderFiles(void)
 	int  numShaders;
 	int  i;
 	long sum = 0;
+	char *prioritizedText[MAX_STRING_TOKENS];
+	int prioritizedTextSize[MAX_STRING_TOKENS];
+	int numPrioritized = 0;
+	char *priorityToken, *priorityNamesPtr;
 
-	Com_Memset(buffers, 0, sizeof(buffers));
-	Com_Memset(buffersize, 0, sizeof(buffersize));
+	Com_Memset(buffers, 0, MAX_SHADER_FILES);
+	Com_Memset(buffersize, 0, sizeof(int) * MAX_SHADER_FILES);
 
 	// scan for shader files
 	shaderFiles = ri.FS_ListFiles("scripts", ".shader", &numShaders);
@@ -3861,21 +3949,86 @@ static void ScanAndLoadShaderFiles(void)
 		Com_sprintf(filename, sizeof(filename), "scripts/%s", shaderFiles[i]);
 		Ren_Developer("...loading '%s'\n", filename);
 		buffersize[i] = ri.FS_ReadFile(filename, (void **)&buffers[i]);
-		sum          += buffersize[i];
+
 		if (!buffers[i])
 		{
 			Ren_Drop("ScanAndLoadShaderFiles: Couldn't load %s", filename);
 		}
+
+		priorityNamesPtr = r_priorityShaderFileNames->string;
+		while (1)
+		{
+			priorityToken = COM_ParseExt(&priorityNamesPtr, qfalse);
+			if (!*priorityToken)
+			{
+				break;
+			}
+			if (!Q_stricmp(shaderFiles[i], priorityToken))
+			{
+				prioritizedText[numPrioritized] = buffers[i];
+				prioritizedTextSize[numPrioritized] = buffersize[i];
+				numPrioritized++;
+				buffers[i] = NULL;
+				break;
+			}
+		}
+
+		sum          += buffersize[i];
+	}
+
+	// custom shaders
+	if (r_transparencyAlphaBlend->integer)
+	{
+		priorityNamesPtr = "shadertexts/gmcustom.shader";
+	}
+	else
+	{
+		priorityNamesPtr = r_customShaderFiles->string;
+	}
+	for (i = numShaders; ; i++, numShaders++)
+	{
+		if (numShaders > MAX_SHADER_FILES)
+		{
+			Ren_Warning("ScanAndLoadShaderFiles WARNING: MAX_SHADER_FILES reached\n");
+			break;
+		}
+
+		priorityToken = COM_ParseExt(&priorityNamesPtr, qfalse);
+		if (!*priorityToken)
+		{
+			break;
+		}
+		//Com_sprintf(filename, sizeof(filename), "%s", priorityToken);
+		Ren_Developer("...loading '%s'\n", priorityToken);
+		buffersize[i] = ri.FS_ReadFile(priorityToken, (void **)&buffers[i]);
+		if (!buffers[i])
+		{
+			Ren_Drop("ScanAndLoadShaderFiles: Couldn't load %s", priorityToken);
+		}
+		sum          += buffersize[i];
 	}
 
 	// build single large buffer
-	s_shaderText = ri.Hunk_Alloc(sum + numShaders * 2, h_low);
+	//s_shaderText = ri.Hunk_Alloc(sum + numShaders * 2, h_low);
+	Com_Dealloc(s_shaderText);
+	s_shaderText = Com_Allocate(sum + numShaders * 2);
 
 	// optimised to not use strcat/strlen which can be VERY slow for the large strings we're using here
 	p = s_shaderText;
 	// free in reverse order, so the temp files are all dumped
+	for (i = numPrioritized - 1 ; i >= 0 ; i--)
+	{
+		strcpy(p++, "\n");
+		strcpy(p, prioritizedText[i]);
+		ri.FS_FreeFile(prioritizedText[i]);
+		prioritizedText[i] = p;
+		p         += prioritizedTextSize[i];
+	}
 	for (i = numShaders - 1; i >= 0 ; i--)
 	{
+		if (!buffers[i])
+			continue;
+
 		strcpy(p++, "\n");
 		strcpy(p, buffers[i]);
 		ri.FS_FreeFile(buffers[i]);

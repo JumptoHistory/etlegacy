@@ -828,7 +828,7 @@ static void FillCloudBox(const shader_t *shader, int stage)
  */
 static void BuildCloudData()
 {
-#ifdef ETLEGACY_DEBUG
+#ifdef LEGACY_DEBUG
 	shader_t *shader = tess.surfaceShader;
 
 	etl_assert(shader->isSky);

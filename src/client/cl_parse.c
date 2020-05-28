@@ -479,8 +479,7 @@ void CL_ParseSnapshot(msg_t *msg)
 					period++;
 				}
 
-				Com_sprintf(name, sizeof(name), "demos/%d-%02d-%02d-%02d%02d%02d-%s.dm_%d", 1900 + time.tm_year,
-				            time.tm_mon + 1, time.tm_mday, time.tm_hour, time.tm_min, time.tm_sec, period, PROTOCOL_VERSION);
+				Com_sprintf(name, sizeof(name), "demos/%s_%i_%i.dm_%d", period, time.tm_mday, time.tm_mon + 1, PROTOCOL_VERSION);
 
 				CL_Record(name);
 			}
@@ -590,20 +589,6 @@ int cl_connectedToCheatServer;
 
 void CL_PurgeCache(void);
 
-static void CL_SetPurePaks(void)
-{
-	const char *s, *t;
-	char *systemInfo = cl.gameState.stringData + cl.gameState.stringOffsets[CS_SYSTEMINFO];
-	// check pure server string
-	s = Info_ValueForKey(systemInfo, "sv_paks");
-	t = Info_ValueForKey(systemInfo, "sv_pakNames");
-	FS_PureServerSetLoadedPaks(s, t);
-
-	s = Info_ValueForKey(systemInfo, "sv_referencedPaks");
-	t = Info_ValueForKey(systemInfo, "sv_referencedPakNames");
-	FS_PureServerSetReferencedPaks(s, t);
-}
-
 /**
  * @brief The systeminfo configstring has been changed, so parse new information out of it.
  * This will happen at every gamestate, and possibly during gameplay.
@@ -611,7 +596,7 @@ static void CL_SetPurePaks(void)
 void CL_SystemInfoChanged(void)
 {
 	char       *systemInfo = cl.gameState.stringData + cl.gameState.stringOffsets[CS_SYSTEMINFO];
-	const char *s;
+	const char *s, *t;
 	char       key[BIG_INFO_KEY];
 	char       value[BIG_INFO_VALUE];
 	qboolean   gameSet;
@@ -625,11 +610,6 @@ void CL_SystemInfoChanged(void)
 	// don't set any vars when playing a demo
 	if (clc.demoplaying)
 	{
-		// allow running demo in pure mode to simulate server environment
-		if (Cvar_VariableValue("sv_pure") != 0.f) 
-		{
-			CL_SetPurePaks();
-		}
 		return;
 	}
 
@@ -640,7 +620,14 @@ void CL_SystemInfoChanged(void)
 		Cvar_SetCheatState();
 	}
 
-	CL_SetPurePaks();
+	// check pure server string
+	s = Info_ValueForKey(systemInfo, "sv_paks");
+	t = Info_ValueForKey(systemInfo, "sv_pakNames");
+	FS_PureServerSetLoadedPaks(s, t);
+
+	s = Info_ValueForKey(systemInfo, "sv_referencedPaks");
+	t = Info_ValueForKey(systemInfo, "sv_referencedPakNames");
+	FS_PureServerSetReferencedPaks(s, t);
 
 	gameSet = qfalse;
 	// scan through all the variables in the systeminfo and locally set cvars to match
@@ -713,6 +700,22 @@ void CL_SystemInfoChanged(void)
 		cl_connectedToPureServer = qfalse;
 	}
 }
+
+#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
+static const char *CreateContainerName()
+{
+	static char containerName[64];
+	FS_CreateContainerName(va(
+		"%i_%i_%i_%i_%i",
+		clc.serverAddress.ip[0],
+		clc.serverAddress.ip[1],
+		clc.serverAddress.ip[2],
+		clc.serverAddress.ip[3],
+		((clc.serverAddress.port & 0xff) << 8) | (clc.serverAddress.port >> 8)
+	), containerName);
+	return containerName;
+}
+#endif
 
 /**
  * @brief CL_ParseGamestate
@@ -802,7 +805,8 @@ void CL_ParseGamestate(msg_t *msg)
 	}
 
 #if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
-	Cvar_Set("fs_containerMount", "1");
+	// set contaner name based of server address
+	Cvar_Set("fs_containerName", CreateContainerName());
 #endif
 
 	// reinitialize the filesystem if the game directory has changed
@@ -828,7 +832,6 @@ void CL_ParseDownload(msg_t *msg)
 	int           size;
 	unsigned char data[MAX_MSGLEN];
 	int           block;
-	const char    *dlDestPath;
 
 	if (!*cls.download.downloadTempName)
 	{
@@ -982,13 +985,9 @@ void CL_ParseDownload(msg_t *msg)
 		{
 			FS_FCloseFile(cls.download.download);
 			cls.download.download = 0;
-		#if defined(FEATURE_PAKISOLATION) && !defined(DEDICATED)
-			dlDestPath = DL_ContainerizePath(cls.download.downloadTempName, cls.download.downloadName);
-		#else
-			dlDestPath = cls.download.downloadName;
-		#endif
+
 			// rename the file
-			FS_SV_Rename(cls.download.downloadTempName, dlDestPath);
+			FS_SV_Rename(cls.download.downloadTempName, cls.download.downloadName);
 		}
 		*cls.download.downloadTempName = *cls.download.downloadName = 0;
 		Cvar_Set("cl_downloadName", "");

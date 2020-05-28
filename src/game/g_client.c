@@ -400,8 +400,10 @@ static qboolean G_IsPositionOK(gentity_t *ent, vec3_t newOrigin)
 		VectorCopy(trace.endpos, ent->s.pos.trBase);
 		return qtrue;
 	}
-
-	return qfalse;
+	else
+	{
+		return qfalse;
+	}
 }
 
 /**
@@ -422,11 +424,10 @@ static void G_StepSlideCorpse(gentity_t *ent, vec3_t newOrigin)
 	if (G_IsPositionOK(ent, newOrigin))
 	{
 		// so check if we can fall even more down
-
 		VectorCopy(ent->s.pos.trBase, down);
 		down[2] -= 16;
 		// item code is using these
-		trap_TraceCapsule(&trace, ent->s.pos.trBase, ent->r.mins, ent->r.maxs, down, ent->s.number, MASK_PLAYERSOLID);
+		trap_Trace(&trace, ent->s.pos.trBase, ent->r.mins, ent->r.maxs, down, ent->s.number, MASK_PLAYERSOLID);
 		if (trace.fraction == 1.f)
 		{
 			// begin with falling again
@@ -490,7 +491,7 @@ static void G_StepSlideCorpse(gentity_t *ent, vec3_t newOrigin)
 	{
 		down[2] -= 16;
 		// item code is using these
-		trap_TraceCapsule(&trace, ent->s.pos.trBase, ent->r.mins, ent->r.maxs, down, ent->s.number, MASK_PLAYERSOLID);
+		trap_Trace(&trace, ent->s.pos.trBase, ent->r.mins, ent->r.maxs, down, ent->s.number, MASK_PLAYERSOLID);
 		if (trace.fraction == 1.f)
 		{
 			// begin with falling again
@@ -513,6 +514,7 @@ static void G_StepSlideCorpse(gentity_t *ent, vec3_t newOrigin)
 void CopyToBodyQue(gentity_t *ent)
 {
 	gentity_t *body;
+	int       i;
 
 	trap_UnlinkEntity(ent);
 
@@ -556,24 +558,17 @@ void CopyToBodyQue(gentity_t *ent)
 	VectorCopy(ent->client->ps.viewangles, body->s.angles);
 	VectorCopy(ent->client->ps.viewangles, body->r.currentAngles);
 
-	if (body->s.groundEntityNum == ENTITYNUM_NONE)
-	{
-		body->s.pos.trType = TR_GRAVITY;
-		body->s.pos.trTime = level.time;
-		VectorCopy(ent->client->ps.velocity, body->s.pos.trDelta);
-	}
-	else
-	{
-		body->s.pos.trType     = TR_STATIONARY;
-		body->s.pos.trTime     = 0;
-		body->s.pos.trDuration = 0;
-		VectorClear(body->s.pos.trDelta);
-	}
+	body->s.pos.trType = TR_GRAVITY;
+	body->s.pos.trTime = level.time;
+	VectorCopy(ent->client->ps.velocity, body->s.pos.trDelta);
 
 	body->s.event = 0;
 
 	// Clear out event system
-	Com_Memset(body->s.events, 0, sizeof(body->s.events));
+	for (i = 0; i < MAX_EVENTS; i++)
+	{
+		body->s.events[i] = 0;
+	}
 	body->s.eventSequence = 0;
 
 	// time needed to complete animation
@@ -585,7 +580,7 @@ void CopyToBodyQue(gentity_t *ent)
 	VectorCopy(ent->r.maxs, body->r.maxs);
 
 	//  bodies have lower bounding box
-	body->r.maxs[2] = DEAD_BODYHEIGHT_BBOX;
+	body->r.maxs[2] = 0;
 
 	body->s.effect1Time = ent->client->deathAnimTime;
 
@@ -618,15 +613,14 @@ void CopyToBodyQue(gentity_t *ent)
 
 		// change bounding box to be off the origin of the corpse
 		// that will make correct box agains model
-		// NOTE: we force rounding number for avoiding unwanted colision
-		body->r.maxs[0] = (int)(offset[0] + playerMaxs[0]);
-		body->r.maxs[1] = (int)(offset[1] + playerMaxs[1]);
-		body->r.mins[0] = (int)(offset[0] + playerMins[0]);
-		body->r.mins[1] = (int)(offset[1] + playerMins[1]);
+		body->r.maxs[0] = offset[0] + 18;
+		body->r.maxs[1] = offset[1] + 18;
+		body->r.mins[0] = offset[0] - 18;
+		body->r.mins[1] = offset[1] - 18;
 
 		body->r.currentOrigin[0] = origin[0] - offset[0];
 		body->r.currentOrigin[1] = origin[1] - offset[1];
-		body->r.currentOrigin[2] = origin[2] + 1;           // make sure it is off ground
+		body->r.currentOrigin[2] = origin[2];
 
 		// ok set it und Fertig!
 		VectorCopy(body->r.currentOrigin, body->s.pos.trBase);
@@ -657,7 +651,14 @@ void CopyToBodyQue(gentity_t *ent)
 	body->die       = body_die;
 
 	// don't take more damage if already gibbed
-	body->takedamage = ent->health > GIB_HEALTH;
+	if (ent->health <= GIB_HEALTH)
+	{
+		body->takedamage = qfalse;
+	}
+	else
+	{
+		body->takedamage = qtrue;
+	}
 
 	trap_LinkEntity(body);
 }
@@ -1943,19 +1944,12 @@ void ClientUserinfoChanged(int clientNum)
 
 	// send over a subset of the userinfo keys so other clients can
 	// print scoreboards, display models, and play custom sounds
-#ifdef FEATURE_PRESTIGE
-	s = va("n\\%s\\t\\%i\\c\\%i\\lc\\%i\\r\\%i\\p\\%i\\m\\%s\\s\\%s\\dn\\%i\\w\\%i\\lw\\%i\\sw\\%i\\lsw\\%i\\mu\\%i\\ref\\%i\\sc\\%i\\u\\%u",
-#else
 	s = va("n\\%s\\t\\%i\\c\\%i\\lc\\%i\\r\\%i\\m\\%s\\s\\%s\\dn\\%i\\w\\%i\\lw\\%i\\sw\\%i\\lsw\\%i\\mu\\%i\\ref\\%i\\sc\\%i\\u\\%u",
-#endif
 	       client->pers.netname,
 	       client->sess.sessionTeam,
 	       client->sess.playerType,
 	       client->sess.latchPlayerType,
 	       client->sess.rank,
-#ifdef FEATURE_PRESTIGE
-	       client->sess.prestige,
-#endif
 	       medalStr,
 	       skillStr,
 	       client->disguiseClientNum,
@@ -2025,8 +2019,6 @@ char *ClientConnect(int clientNum, qboolean firstTime, qboolean isBot)
 	char reason[MAX_STRING_CHARS] = "";
 #endif
 	qboolean allowGeoIP = qtrue;
-	int      i;
-
 	trap_GetUserinfo(clientNum, userinfo, sizeof(userinfo));
 
 	// grab the values we need in just one pass
@@ -2072,23 +2064,10 @@ char *ClientConnect(int clientNum, qboolean firstTime, qboolean isBot)
 		}
 	}
 
-	// check guid
-	if (!isBot)
+	// don't allow empty, unknown or 'NO_GUID' guid
+	if (strlen(cs_guid) < MAX_GUID_LENGTH)
 	{
-		// don't allow empty, unknown or 'NO_GUID' guid
-		if (strlen(cs_guid) < MAX_GUID_LENGTH)
-		{
-			return "Bad GUID: Invalid etkey. Please use the ET: Legacy client or add an etkey.";
-		}
-
-		// check guid format
-		for (i = 0; i < MAX_GUID_LENGTH; i++)
-		{
-			if (cs_guid[i] < 48 || (cs_guid[i] > 57 && cs_guid[i] < 65) || cs_guid[i] > 70)
-			{
-				return "Bad GUID: Invalid etkey.";
-			}
-		}
+		return "Bad GUID: Invalid etkey. Please use the ET:Legacy client or add an etkey.";
 	}
 
 	// IP filtering
@@ -2313,31 +2292,6 @@ char *ClientConnect(int clientNum, qboolean firstTime, qboolean isBot)
 		G_CalcRank(client);
 	}
 #endif
-
-#ifdef FEATURE_PRESTIGE
-	if (g_prestige.integer)
-	{
-		int i;
-
-		G_GetClientPrestige(client);
-
-		for (i = 0; i < SK_NUM_SKILLS; i++)
-		{
-			G_SetPlayerSkill(client, i);
-		}
-	}
-	else
-#endif
-	if (firstTime && g_xpSaver.integer && g_gametype.integer == GT_WOLF_CAMPAIGN)
-	{
-		int i;
-		G_XPSaver_Load(client);
-
-		for (i = 0; i < SK_NUM_SKILLS; i++)
-		{
-			G_SetPlayerSkill(client, i);
-		}
-	}
 
 	ClientUserinfoChanged(clientNum);
 
@@ -2769,7 +2723,7 @@ void ClientSpawn(gentity_t *ent, qboolean revived, qboolean teamChange, qboolean
 	client->pers.lastHQMineReportTime     = level.timeCurrent;
 
 /*
-#ifndef ETLEGACY_DEBUG
+#ifndef LEGACY_DEBUG
     if( !client->sess.versionOK ) {
         char *clientMismatchedVersion = G_CheckVersion( ent );	// returns NULL if version is identical
 
@@ -2815,7 +2769,6 @@ void ClientSpawn(gentity_t *ent, qboolean revived, qboolean teamChange, qboolean
 
 	// unlagged reset history markers
 	G_ResetMarkers(ent);
-	ent->client->backupMarker.time = 0;
 	// unlagged
 
 	flags |= (client->ps.eFlags & EF_VOTED);
@@ -2961,7 +2914,7 @@ void ClientSpawn(gentity_t *ent, qboolean revived, qboolean teamChange, qboolean
 	client->pmext.sprintTime   = SPRINTTIME;
 	client->ps.sprintExertTime = 0;
 
-	client->ps.friction = 1.0f;
+	client->ps.friction = 1.0;
 
 	// retrieve from the persistant storage (we use this in pmoveExt_t beause we need it in bg_*)
 	client->pmext.bAutoReload = client->pers.bAutoReloadAux;
@@ -3146,7 +3099,7 @@ void ClientSpawn(gentity_t *ent, qboolean revived, qboolean teamChange, qboolean
 	// clear entity state values
 	BG_PlayerStateToEntityState(&client->ps, &ent->s, level.time, qtrue);
 
-	// G_ResetMarkers(ent);
+	G_ResetMarkers(ent);
 
 	// start the scripting system
 	if (!revived && client->sess.sessionTeam != TEAM_SPECTATOR)
@@ -3191,18 +3144,6 @@ void ClientDisconnect(int clientNum)
 		G_SkillRatingSetClientRating(ent->client);
 	}
 #endif
-
-#ifdef FEATURE_PRESTIGE
-	if (g_prestige.integer && !level.intermissiontime)
-	{
-		G_SetClientPrestige(ent->client, qfalse);
-	}
-	else
-#endif
-	if (g_xpSaver.integer && g_gametype.integer == GT_WOLF_CAMPAIGN && !level.intermissiontime)
-	{
-		G_XPSaver_Store(ent->client);
-	}
 
 #ifdef FEATURE_LUA
 	// LUA API callbacks

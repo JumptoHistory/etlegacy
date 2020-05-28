@@ -443,9 +443,9 @@ typedef struct
 	char vendor_string[MAX_STRING_CHARS];
 	char version_string[MAX_STRING_CHARS];
 	char extensions_string[MAX_STRING_CHARS * 4];   ///< bumping, some cards have a big extension string
-	                                                ///< - no need to increase MAX_STRING_CHARS *4 - console doesn't print more
-	                                                ///< ET:L also stores this data in char* to fix extensions_string overflow issues
-	                                                ///< see end of struct - modern gfx cards have huge extensions string
+													///< - no need to increase MAX_STRING_CHARS *4 - console doesn't print more
+													///< ET:L also stores this data in char* to fix extensions_string overflow issues
+													///< see end of struct - modern gfx cards have huge extensions string
 
 	int maxTextureSize;                             ///< queried from GL
 	int maxActiveTextures;                          ///< multitexture ability
@@ -483,6 +483,20 @@ typedef struct
 	qboolean isFullscreen;
 	qboolean smpActive;                     ///< obsolete, kept for compatibility
 } glconfig_t;
+
+/**
+* @enum glconfigExt_t
+* @brief Contains extra variables for OpenGL configuration
+*/
+typedef struct {
+	int contextCombined;
+	int maxSamples;
+	qboolean generateMipmapAvailable;
+	qboolean framebufferSrgbAvailable;
+	qboolean textureNPOTAvailable;
+
+	int multisampleSamples;
+} glconfigExt_t;
 
 /**
  * @enum windowContextType_t

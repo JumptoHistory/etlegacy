@@ -387,7 +387,7 @@ void Con_Linefeed(qboolean skipnotify)
 }
 
 
-#if defined(_WIN32) && !defined(ETLEGACY_DEBUG)
+#if defined(_WIN32) && !defined(LEGACY_DEBUG)
 #pragma optimize( "g", off ) // msvc totally screws this function up with optimize on
 #endif
 
@@ -507,7 +507,7 @@ void CL_ConsolePrint(char *txt)
 	}
 }
 
-#if defined(_WIN32) && !defined(ETLEGACY_DEBUG)
+#if defined(_WIN32) && !defined(LEGACY_DEBUG)
 #pragma optimize( "g", on ) // re-enabled optimization
 #endif
 
@@ -592,9 +592,21 @@ void Con_DrawInput(void)
 		}
 	}
 
-	re.SetColor(con.color);
+	if ( cl_promptColor->integer >= 0 && cl_promptColor->integer < ARRAY_LEN( g_color_table ) ) {
+		re.SetColor( g_color_table[cl_promptColor->integer] );
+	} else {
+		vec4_t pColor = { 0.4, 0.3, 1.0, 1.0 };
+		re.SetColor( pColor );
+	}
 
-	SCR_DrawSmallChar(SMALLCHAR_WIDTH, y, ']');
+	if (SLASH_COMMAND)
+	{
+		SCR_DrawSmallChar(SMALLCHAR_WIDTH, y, ']');
+	}
+	else
+	{
+		SCR_DrawSmallChar(SMALLCHAR_WIDTH, y, '\\');
+	}
 
 	Field_Draw(&g_consoleField, 2 * SMALLCHAR_WIDTH, y,
 	           SCREEN_WIDTH - 3 * SMALLCHAR_WIDTH, qtrue, qtrue);
@@ -745,31 +757,47 @@ void Con_DrawSolidConsole(float frac)
 	}
 	else
 	{
-		SCR_DrawPic(0, 0, SCREEN_WIDTH, y, cls.consoleShader);
+		static vec4_t conColor = { 0.1f, 0.025f, 0.0f };
 
-		/*
-		// draw the logo
-		if (frac >= 0.5f)
-		{
-		    color[0] = color[1] = color[2] = frac * 2.0f;
-		    color[3] = 1.0f;
-		    re.SetColor(color);
-
-		    SCR_DrawPic(192, 70, 256, 128, cls.consoleShader2);
-		    re.SetColor(NULL);
+		if ( cl_consoleAlpha->value >= 0 ) {
+			if ( cl_consoleRGB->modified && cl_consoleRGB->string[0] ) {
+				if ( sscanf( cl_consoleRGB->string, "%f %f %f", color, color + 1, color + 2 ) == 3 ) {
+					memcpy( conColor, color, sizeof( vec_t ) * 3 );
+					cl_consoleRGB->modified = qfalse;
+				}
+			}
+			conColor[3] = cl_consoleAlpha->value;
+			SCR_FillRect( 0, 0, SCREEN_WIDTH, y, conColor );
 		}
-		*/
+		else {
+			SCR_DrawPic(0, 0, SCREEN_WIDTH, y, cls.consoleShader);
+
+			/*
+			// draw the logo
+			if (frac >= 0.5f)
+			{
+				color[0] = color[1] = color[2] = frac * 2.0f;
+				color[3] = 1.0f;
+				re.SetColor(color);
+
+				SCR_DrawPic(192, 70, 256, 128, cls.consoleShader2);
+				re.SetColor(NULL);
+			}
+			*/
+		}
 	}
 
-	// matching light text
-	color[0] = 0.75f;
-	color[1] = 0.75f;
-	color[2] = 0.75f;
-	color[3] = 1.0f;
+	if ( cl_consoleAlpha->value == -1 ) {
+		// matching light text
+		color[0] = 0.75f;
+		color[1] = 0.75f;
+		color[2] = 0.75f;
+		color[3] = 1.0f;
 
-	if (frac < 1)
-	{
-		SCR_FillRect(0, y, SCREEN_WIDTH, 1.25f, color);
+		if (frac < 1)
+		{
+			SCR_FillRect(0, y, SCREEN_WIDTH, 1.25f, color);
+		}
 	}
 
 	re.SetColor(g_color_table[ColorIndex(CONSOLE_COLOR)]);

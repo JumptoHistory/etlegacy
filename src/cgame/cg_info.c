@@ -985,17 +985,10 @@ void CG_GameStatsDraw(void)
 		x += 120;
 		CG_Text_Paint_Ext(x + 4, y, hScale2, hScaleY2, hdrColor, "XP", 0.0f, 0, hStyle2, hFont2);
 #ifdef FEATURE_RATING
-		if (cgs.skillRating && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS)
+		if (cgs.skillRating)
 		{
-			x += 52;
+			x += 96;
 			CG_Text_Paint_Ext(x + 4, y, hScale2, hScaleY2, hdrColor, "Skill Rating", 0.0f, 0, hStyle2, hFont2);
-		}
-#endif
-#ifdef FEATURE_PRESTIGE
-		if (cgs.prestige && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS && cgs.gametype != GT_WOLF_CAMPAIGN)
-		{
-			x += 85;
-			CG_Text_Paint_Ext(x + 4, y, hScale2, hScaleY2, hdrColor, "Prestige", 0.0f, 0, hStyle2, hFont2);
 		}
 #endif
 
@@ -1013,16 +1006,7 @@ void CG_GameStatsDraw(void)
 		x += 86;
 		CG_Text_Paint_Ext(x + 4, y, hScale2, hScaleY2, hdrColor, CG_TranslateString("Level"), 0.0f, 0, hStyle2, hFont2);
 		x += 74;
-#ifdef FEATURE_PRESTIGE
-		if (cgs.prestige && cgs.gametype != GT_WOLF_CAMPAIGN && cgs.gametype != GT_WOLF_STOPWATCH && cgs.gametype != GT_WOLF_LMS)
-		{
-			CG_Text_Paint_Ext(x + 4, y, hScale2, hScaleY2, hdrColor, CG_TranslateString("XP (Total / Next Level)"), 0.0f, 0, hStyle2, hFont2);
-		}
-		else
-#endif
-		{
-			CG_Text_Paint_Ext(x + 4, y, hScale2, hScaleY2, hdrColor, CG_TranslateString("XP / Next Level"), 0.0f, 0, hStyle2, hFont2);
-		}
+		CG_Text_Paint_Ext(x + 4, y, hScale2, hScaleY2, hdrColor, CG_TranslateString("XP / Next Level"), 0.0f, 0, hStyle2, hFont2);
 		if (cgs.gametype == GT_WOLF_CAMPAIGN)
 		{
 			x += 102;
@@ -1873,7 +1857,7 @@ void CG_DemoHelpDraw(void)
 			y += DH_Y - h;
 		}
 
-		if (cg.etLegacyClient && cg.demoinfo)
+		if (cg.legacyClient && cg.demoinfo)
 		{
 			CG_DrawDemoControls(x, y - 62, w, borderColor, bgColor, tSpacing, bgColorTitle, borderColorTitle, hScale, hScaleY, hdrColor, hStyle, hFont);
 			y += 10;

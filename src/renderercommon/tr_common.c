@@ -108,6 +108,8 @@ qboolean GL_CheckForExtension(const char *ext)
  */
 static qboolean GLimp_InitOpenGLContext()
 {
+	int GLmajor, GLminor;
+
 #ifndef FEATURE_RENDERER2 // vanilla or GLES
 	// get vendor
 	Q_strncpyz(glConfig.vendor_string, (const char *) qglGetString(GL_VENDOR), sizeof(glConfig.vendor_string));
@@ -127,9 +129,11 @@ static qboolean GLimp_InitOpenGLContext()
 	Com_Printf("GL_VERSION: %s\n", glConfig.version_string);
 
 	Com_Printf("Using vanilla renderer\n");
-#else // FEATURE_RENDERER2
-	int GLmajor, GLminor;
 
+	// get GL context version
+	sscanf(( const char * ) glGetString(GL_VERSION), "%d.%d", &GLmajor, &GLminor);
+	glConfigExt.contextCombined = (GLmajor * 100) + (GLminor * 10);
+#else // FEATURE_RENDERER2
 	// get vendor
 	Q_strncpyz(glConfig.vendor_string, (const char *) glGetString(GL_VENDOR), sizeof(glConfig.vendor_string));
 
@@ -175,36 +179,23 @@ static qboolean GLimp_InitOpenGLContext()
 	return qtrue;
 }
 
-#ifdef FEATURE_RENDERER2
-
 /**
- * @brief Glimp_DebugCallback
- * @param source    - unused
- * @param type      - unused
- * @param id        - unused
- * @param severity  - unused
- * @param length    - unused
- * @param[in] message
- * @param userParam - unused
- */
-void GLAPIENTRY Glimp_DebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const GLvoid *userParam)
-{
-	Ren_Warning("Driver message: %s\n", message);
-}
-
-/**
- * @brief GLimp_CheckForVersionExtension
- * @param[in] ext
- * @param[in] coresince
- * @param[in] required
- * @param[in] var
- * @return
- */
+* @brief GLimp_CheckForVersionExtension
+* @param[in] ext
+* @param[in] coresince
+* @param[in] required
+* @param[in] var
+* @return
+*/
 static qboolean GLimp_CheckForVersionExtension(const char *ext, int coresince, qboolean required, cvar_t *var)
 {
 	qboolean result = qfalse;
 
+#ifdef FEATURE_RENDERER2
 	if ((coresince >= 0 && coresince <= glConfig2.contextCombined) || GL_CheckForExtension(ext))
+#else
+	if ((coresince >= 0 && coresince <= glConfigExt.contextCombined) || GL_CheckForExtension(ext))
+#endif
 	{
 		if (var && var->integer)
 		{
@@ -238,6 +229,23 @@ static qboolean GLimp_CheckForVersionExtension(const char *ext, int coresince, q
 	}
 
 	return result;
+}
+
+#ifdef FEATURE_RENDERER2
+
+/**
+ * @brief Glimp_DebugCallback
+ * @param source    - unused
+ * @param type      - unused
+ * @param id        - unused
+ * @param severity  - unused
+ * @param length    - unused
+ * @param[in] message
+ * @param userParam - unused
+ */
+void GLAPIENTRY Glimp_DebugCallback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const GLvoid *userParam)
+{
+	Ren_Warning("Driver message: %s\n", message);
 }
 
 /**
@@ -425,6 +433,15 @@ static void GLimp_InitExtensionsR2(void)
 		}
 #endif
 	}
+
+	if (r_extMultitexture->integer)
+	{
+		glConfig.maxActiveTextures = 32;
+	}
+	else
+	{
+		glConfig.maxActiveTextures = 1;
+	}
 }
 #endif
 
@@ -561,6 +578,59 @@ static void GLimp_InitExtensions(void)
 		Com_Printf("...GL_ARB_multitexture not found\n");
 	}
 #endif
+
+	glConfigExt.maxSamples = -1;
+	if (GLimp_CheckForVersionExtension("GL_EXT_framebuffer_multisample", 300, qfalse, NULL))
+	{
+		glGetIntegerv(GL_MAX_SAMPLES, &glConfigExt.maxSamples);
+		Com_Printf("...found OpenGL extension - GL_EXT_framebuffer_multisample\n");
+	}
+	else
+	{
+		Com_Printf("...GL_EXT_framebuffer_multisample not found\n");
+	}
+
+	glConfigExt.generateMipmapAvailable = qfalse;
+	if (GLimp_CheckForVersionExtension("GL_SGIS_generate_mipmap", 140, qfalse, r_extGenerateMipmap))
+	{
+		glConfigExt.generateMipmapAvailable = qtrue;
+		Com_Printf("...found OpenGL extension - GL_SGIS_generate_mipmap\n");
+	}
+	else
+	{
+		Com_Printf("...GL_EXT_framebuffer_multisample not found\n");
+	}
+
+	glConfigExt.framebufferSrgbAvailable = qfalse;
+	/*if (glConfig.textureCompression == TC_S3TC)
+	{
+		Com_Printf("...not using GL_ARB_framebuffer_sRGB, textureCompression == TC_S3TC\n");
+
+	}
+	else if (r_textureBits->integer == 16)
+	{
+		Com_Printf("...not using GL_ARB_framebuffer_sRGB, r_textureBits == 16\n");
+	}
+	else if (GLimp_CheckForVersionExtension("GL_ARB_framebuffer_sRGB", 300, qfalse, r_srgbGammaCorrect))
+	{
+		glConfigExt.framebufferSrgbAvailable = qtrue;
+		Com_Printf("...found OpenGL extension - GL_ARB_framebuffer_sRGB\n");
+	}
+	else
+	{
+		Com_Printf("...GL_ARB_framebuffer_sRGB not found\n");
+	}*/
+
+	glConfigExt.textureNPOTAvailable = qfalse;
+	if (GLimp_CheckForVersionExtension("GL_ARB_texture_non_power_of_two", 300, qfalse, r_extTextureNonPowerOfTwo))
+	{
+		glConfigExt.textureNPOTAvailable = qtrue;
+		Com_Printf("...found OpenGL extension - GL_ARB_texture_non_power_of_to\n");
+	}
+	else
+	{
+		Com_Printf("...GL_ARB_texture_non_power_of_to not found\n");
+	}
 }
 #endif
 

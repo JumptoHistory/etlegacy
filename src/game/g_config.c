@@ -499,7 +499,7 @@ qboolean G_configSet(const char *configname)
 
 	if (!level.config.publicConfig && g_gamestate.integer == GS_WARMUP_COUNTDOWN)
 	{
-		level.lastRestartTime = level.time;
+		level.lastRestartTime = (qboolean)level.time;
 		trap_SendConsoleCommand(EXEC_APPEND, va("map_restart 0 %i\n", GS_WARMUP));
 	}
 	else

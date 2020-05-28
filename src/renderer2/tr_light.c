@@ -170,10 +170,6 @@ LIGHT SAMPLING
 =============================================================================
 */
 
-extern cvar_t *r_ambientScale;
-//extern cvar_t *r_directedScale;
-extern cvar_t *r_debugLight;
-
 /**
  * @brief R_SetupEntityLightingGrid
  * @param[in,out] ent
@@ -283,22 +279,7 @@ static void R_SetupEntityLightingGrid(trRefEntity_t *ent, vec3_t forcedOrigin)
 		VectorScale(ent->directedLight, totalFactor, ent->directedLight);
 	}
 
-	if (forcedOrigin)
-	{
-		/*this is inlinemodels(brushmodels) wich should be lit by lightmap,
-		therefore we set sundirection as lightdirection on them
-		because then they have sort of the same as world brushes.
-		also adjusting lights on these so they arent glowing or too dark*/
-		VectorScale(ent->ambientLight, 0.5, ent->ambientLight);
-		VectorScale(ent->directedLight, 0.75, ent->directedLight);
-		VectorCopy(tr.sunDirection, ent->lightDir);
-	}
-	else
-	{
-		VectorScale(ent->ambientLight, r_ambientScale->value, ent->ambientLight);
-		VectorScale(ent->directedLight, 1, ent->directedLight);
-	}
-
+	VectorNormalize2(direction, ent->lightDir);
 
 	// cheats?  check for single player?
 	if (tr.lightGridMulDirected != 0.f)
@@ -309,11 +290,6 @@ static void R_SetupEntityLightingGrid(trRefEntity_t *ent, vec3_t forcedOrigin)
 	{
 		VectorScale(ent->ambientLight, tr.lightGridMulAmbient, ent->ambientLight);
 	}
-
-	VectorNormalize2(direction, ent->lightDir);
-
-	// debug hack
-	//VectorSubtract( vec3_origin, direction, ent->lightDir );
 }
 
 /**
@@ -326,7 +302,6 @@ static void R_SetupEntityLightingGrid(trRefEntity_t *ent, vec3_t forcedOrigin)
  */
 void R_SetupEntityLighting(const trRefdef_t *refdef, trRefEntity_t *ent, vec3_t forcedOrigin)
 {
-	vec3_t   lightOrigin;
 	// lighting calculations
 	if (ent->lightingCalculated)
 	{
@@ -334,41 +309,42 @@ void R_SetupEntityLighting(const trRefdef_t *refdef, trRefEntity_t *ent, vec3_t 
 	}
 	ent->lightingCalculated = qtrue;
 
-	// trace a sample point down to find ambient light
-	if (ent->e.renderfx & RF_LIGHTING_ORIGIN)
-	{
-		// seperate lightOrigins are needed so an object that is
-		// sinking into the ground can still be lit, and so
-		// multi-part models can be lit identically
-		VectorCopy(ent->e.lightingOrigin, lightOrigin);
-	}
-	else
-	{
-		VectorCopy(ent->e.origin, lightOrigin);
-	}
+	
+	
 
 	// if NOWORLDMODEL, only use dynamic lights (menu system, etc)
-	if (forcedOrigin ||tr.world && tr.world->lightGridData &&
-	    (!(refdef->rdflags & RDF_NOWORLDMODEL) ||
-	     ((refdef->rdflags & RDF_NOWORLDMODEL) && (ent->e.renderfx & RF_LIGHTING_ORIGIN))))
+	if (!(refdef->rdflags & RDF_NOWORLDMODEL) && tr.world && tr.world->lightGridData)
 	{
 		R_SetupEntityLightingGrid(ent, forcedOrigin);
 	}
 	else
 	{
-		//ent->ambientLight[0] = ent->ambientLight[1] = ent->ambientLight[2] = tr.identityLight * 150;
-		//ent->directedLight[0] = ent->directedLight[1] = ent->directedLight[2] = tr.identityLight * 150;
-		//VectorCopy(tr.sunDirection, ent->lightDir);
-		ent->ambientLight[0]  = tr.identityLight * 0.25;
-		ent->ambientLight[1]  = tr.identityLight * 0.25;
-		ent->ambientLight[2]  = tr.identityLight * 0.37;
-		ent->directedLight[0] = tr.identityLight;
+		ent->ambientLight[0] = tr.identityLight * 0.25;
+		ent->ambientLight[1] = tr.identityLight * 0.25;
+		ent->ambientLight[2] = tr.identityLight * 0.37;
+
+		ent->directedLight[0] = tr.identityLight; // * (255.0f / 255.0f);
 		ent->directedLight[1] = tr.identityLight * 0.9;
 		ent->directedLight[2] = tr.identityLight * 0.87;
+
+		//VectorCopy(tr.sunDirection, ent->lightDir);
 		VectorSet(ent->lightDir, -1, 1, 1.25);
 		VectorNormalize(ent->lightDir);
 	}
 
+		
+		
+	// ambient light adds
+	if (forcedOrigin)
+	{
+		/*this is inlinemodels(brushmodels) wich should be lit by lightmap,
+		therefore we set sundirection as lightdirection on them
+		because then they have sort of the same as world brushes.
+		also adjusting lights on these so they arent glowing or too dark*/
+		VectorScale(ent->ambientLight, 0.5, ent->ambientLight);
+		VectorScale(ent->directedLight, 0.75, ent->directedLight);
+		VectorCopy(tr.sunDirection, ent->lightDir);
+	}
 	if (ent->e.hilightIntensity != 0.f)
 	{
 		// level of intensity was set because the item was looked at
@@ -376,7 +352,7 @@ void R_SetupEntityLighting(const trRefdef_t *refdef, trRefEntity_t *ent, vec3_t 
 		ent->ambientLight[1] += tr.identityLight * 0.5 * ent->e.hilightIntensity;
 		ent->ambientLight[2] += tr.identityLight * 0.5 * ent->e.hilightIntensity;
 	}
-	else if (ent->e.renderfx & RF_MINLIGHT)
+	else if (ent->e.renderfx & RF_MINLIGHT)  // && VectorLength(ent->ambientLight) <= 0)
 	{
 		// give everything a minimum light add
 		ent->ambientLight[0] += tr.identityLight * 0.125;
@@ -385,12 +361,34 @@ void R_SetupEntityLighting(const trRefdef_t *refdef, trRefEntity_t *ent, vec3_t 
 	}
 
 
-	if (ent->e.entityNum < MAX_CLIENTS && (refdef->rdflags & RDF_SNOOPERVIEW))
+
+	// force an ambient light value or scale by given r_ambientscale
+	// note: this will also affect ambient light for hilightIntensity and RF_MINLIGHT ...
+
+	// this will keep weapons and characters from becoming black when no lightgrid is present..
+	if (VectorLength(ent->ambientLight) < r_ambientScale->value)
 	{
-		VectorSet(ent->ambientLight, 0.96, 0.96, 0.96);      // allow a little room for flicker from directed light
+		ent->ambientLight[0] = r_ambientScale->value;
+		ent->ambientLight[1] = r_ambientScale->value;
+		ent->ambientLight[2] = r_ambientScale->value;
 	}
-	
-	
+	else
+	{
+		//HUD
+		if (refdef->rdflags & RDF_NOWORLDMODEL) // no scaling for no world models set world ambient light instead
+		{
+			VectorCopy(tr.worldEntity.ambientLight, ent->ambientLight);
+		}
+		//SCOPED WEAPON
+		if (refdef->rdflags & RDF_SNOOPERVIEW) // nightscope
+		{
+			VectorSet(ent->ambientLight, 0.96f, 0.96f, 0.96f);  // allow a little room for flicker from directed light
+		}
+		else
+		{
+			VectorScale(ent->ambientLight, r_ambientScale->value, ent->ambientLight);
+		}
+	}
 	// renormalize if necessary
 	if (ent->e.nonNormalizedAxes)
 	{

@@ -90,7 +90,6 @@ const char *hintStrings[HINT_NUM_HINTS] =
 	"HINT_SATCHELCHARGE",
 
 	"unused",                   ///< HINT_LOCKPICK
-	"HINT_RESTRICTED",
 
 	"HINT_BAD_USER",
 };

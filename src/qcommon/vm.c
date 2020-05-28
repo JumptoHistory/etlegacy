@@ -355,6 +355,10 @@ intptr_t QDECL VM_DllSyscall(intptr_t arg, ...)
 
 	return currentVM->systemCall(args);
 #else                           // original id code
+	if (!currentVM)
+	{
+		Com_Error(ERR_FATAL, "VM_DllSyscall: currentVM was not set.");
+	}
 	return currentVM->systemCall(&arg);
 #endif
 }
@@ -891,10 +895,9 @@ void VM_VmInfo_f(void)
 	}
 }
 
-#ifdef DEBUG_VM
 /**
  * @brief Insert calls to this while debugging the vm compiler
- * @param[in] args
+ * @param args
  */
 void VM_LogSyscalls(int *args)
 {
@@ -904,15 +907,8 @@ void VM_LogSyscalls(int *args)
 	if (!f)
 	{
 		f = fopen("syscalls.log", "w");
-
-		if (!f)
-		{
-			Com_Printf("Cannot open syscalls.log\n");
-			return;
-		}
 	}
 	callnum++;
 	fprintf(f, "%i: %p (%i) = %i %i %i %i\n", callnum, (void *)(args - (int *)currentVM->dataBase),
 	        args[0], args[1], args[2], args[3], args[4]);
 }
-#endif

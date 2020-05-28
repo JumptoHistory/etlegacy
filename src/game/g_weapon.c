@@ -418,6 +418,7 @@ void ReviveEntity(gentity_t *ent, gentity_t *traceEnt)
 * @brief Shoot the syringe, do the old lazarus bit
 *
 * @param[in,out] ent
+* @param[out] firedShot - unused
 *
 */
 gentity_t *Weapon_Syringe(gentity_t *ent)
@@ -461,10 +462,12 @@ gentity_t *Weapon_Syringe(gentity_t *ent)
 		ReviveEntity(ent, traceEnt);
 
 		// syringe "hit"
-		if (g_gamestate.integer == GS_PLAYING)
-		{
-			ent->client->sess.aWeaponStats[WS_SYRINGE].hits++;
-		}
+		// we no longer track the syringe - it's no real weapon and messes up the total weapon stats (see acc)
+		// FIXME: add a new award 'most revives' instead?
+		//if (g_gamestate.integer == GS_PLAYING)
+		//{
+		//ent->client->sess.aWeaponStats[WS_SYRINGE].hits++;
+		//}
 
 		G_LogPrintf("Medic_Revive: %d %d\n", (int)(ent - g_entities), (int)(traceEnt - g_entities));
 
@@ -2629,11 +2632,7 @@ void G_AirStrikeThink(gentity_t *ent)
 
 		if (level.tracemapLoaded)
 		{
-			int skyHeight;
-
-			skyHeight = (int)(BG_GetSkyHeightAtPoint(bomboffset));
-
-			if (bomboffset[2] >= skyHeight || skyHeight == MAX_MAP_SIZE)
+			if (bomboffset[2] >= BG_GetSkyHeightAtPoint(bomboffset))
 			{
 				bomb->count = 1;                 // may start through the sky
 			}
@@ -2933,11 +2932,7 @@ void artillerySpotterThink(gentity_t *ent)
 
 	if (level.tracemapLoaded)
 	{
-		int skyHeight;
-
-		skyHeight = (int)(BG_GetSkyHeightAtPoint(bomboffset));
-
-		if (bomboffset[2] >= skyHeight || skyHeight == MAX_MAP_SIZE)
+		if (bomboffset[2] >= BG_GetSkyHeightAtPoint(bomboffset))
 		{
 			bomb->count = 1;         // may start through the sky
 		}
@@ -3003,7 +2998,7 @@ void Weapon_Artillery(gentity_t *ent)
 
 	// FIXME: decide if we want to do charge costs for 'Insufficient fire support' calls
 	//        and remove ReadyToCallArtillery() function
-	// FIXME: check omnibot interface to deal with this
+	// FIXME: check omnibot legacy mod interface to deal with this
 	if (!ReadyToCallArtillery(ent))
 	{
 		return;
@@ -3059,17 +3054,17 @@ void Weapon_Artillery(gentity_t *ent)
 	G_GlobalClientEvent(EV_ARTYMESSAGE, 2, ent - g_entities);
 
 	// spotter
-	spotter               = G_Spawn();
-	spotter->parent       = ent;
-	spotter->think        = artillerySpotterThink;
-	spotter->s.weapon     = WP_ARTY;
-	spotter->s.teamNum    = ent->client->sess.sessionTeam;
-	spotter->s.clientNum  = ent->client->ps.clientNum;
-	spotter->r.ownerNum   = ent->s.number;
-	spotter->nextthink    = level.time + 5000;
-	spotter->r.svFlags    = SVF_BROADCAST;
-	spotter->count2       = 1;                           // first bomb
-	spotter->s.pos.trType = TR_STATIONARY;
+	spotter                    = G_Spawn();
+	spotter->parent            = ent;
+	spotter->think             = artillerySpotterThink;
+	spotter->s.weapon          = WP_ARTY;
+	spotter->s.teamNum         = ent->client->sess.sessionTeam;
+	spotter->s.clientNum       = ent->client->ps.clientNum;
+	spotter->r.ownerNum        = ent->s.number;
+	spotter->nextthink         = level.time + 5000;
+	spotter->r.svFlags         = SVF_BROADCAST;
+	spotter->count2            = 1;                      // first bomb
+	spotter->s.pos.trType      = TR_STATIONARY;
 	SnapVector(pos);
 	VectorCopy(pos, spotter->r.currentOrigin);
 	VectorCopy(pos, spotter->s.pos.trBase);
@@ -3981,7 +3976,7 @@ void CalcMuzzlePoints(gentity_t *ent, int weapon)
 	{
 		float pitchMinAmp, yawMinAmp, phase;
 
-		if (weapon == WP_FG42_SCOPE)
+		if (weapon == WP_FG42SCOPE)
 		{
 			pitchMinAmp = 4 * ZOOM_PITCH_MIN_AMPLITUDE;
 			yawMinAmp   = 4 * ZOOM_YAW_MIN_AMPLITUDE;
@@ -4023,10 +4018,8 @@ qboolean G_PlayerCanBeSeenByOthers(gentity_t *ent)
 	vec3_t    pos[3];
 
 	VectorCopy(ent->client->ps.origin, pos[0]);
-	pos[0][2] += ent->client->ps.mins[2];
-	VectorCopy(ent->client->ps.origin, pos[1]);
-	VectorCopy(ent->client->ps.origin, pos[2]);
-	pos[2][2] += ent->client->ps.maxs[2];
+	VectorCopy(ent->client->ps.mins, pos[1]);
+	VectorCopy(ent->client->ps.maxs, pos[2]);
 
 	for (i = 0, ent2 = g_entities; i < level.maxclients; i++, ent2++)
 	{
@@ -4055,9 +4048,7 @@ qboolean G_PlayerCanBeSeenByOthers(gentity_t *ent)
 			G_SetupFrustum(ent2);
 		}
 
-		if (G_VisibleFromBinoculars(ent2, ent, pos[0]) ||
-		    G_VisibleFromBinoculars(ent2, ent, pos[1]) ||
-		    G_VisibleFromBinoculars(ent2, ent, pos[2]))
+		if (G_VisibleFromBinoculars_Box(ent2, ent, pos[0], pos[1], pos[2]))
 		{
 			return qtrue;
 		}
@@ -4117,13 +4108,13 @@ weapFireTable_t weapFireTable[] =
     //
 	{ WP_GARAND_SCOPE,         Bullet_Fire,                 NULL,                       NULL,               ET_GENERAL,            EF_NONE,                    SVF_NONE,                     CONTENTS_NONE,   TR_LINEAR,      0,                     { { 0, 0, 0 }, { 0, 0, 0 } },                    MASK_SHOT,        0,         0,       0,     0,        0,           },
 	{ WP_K43_SCOPE,            Bullet_Fire,                 NULL,                       NULL,               ET_GENERAL,            EF_NONE,                    SVF_NONE,                     CONTENTS_NONE,   TR_LINEAR,      0,                     { { 0, 0, 0 }, { 0, 0, 0 } },                    MASK_SHOT,        0,         0,       0,     0,        0,           },
-	{ WP_FG42_SCOPE,           Bullet_Fire,                 NULL,                       NULL,               ET_GENERAL,            EF_NONE,                    SVF_NONE,                     CONTENTS_NONE,   TR_LINEAR,      0,                     { { 0, 0, 0 }, { 0, 0, 0 } },                    MASK_SHOT,        0,         0,       0,     0,        0,           },
+	{ WP_FG42SCOPE,            Bullet_Fire,                 NULL,                       NULL,               ET_GENERAL,            EF_NONE,                    SVF_NONE,                     CONTENTS_NONE,   TR_LINEAR,      0,                     { { 0, 0, 0 }, { 0, 0, 0 } },                    MASK_SHOT,        0,         0,       0,     0,        0,           },
 	{ WP_MORTAR_SET,           weapon_mortar_fire,          NULL,                       NULL,               ET_MISSILE,            EF_NONE,                    SVF_BROADCAST,                CONTENTS_NONE,   TR_GRAVITY,     -MISSILE_PRESTEP_TIME, { { -4.f, -4.f, 0.f }, { 4.f, 4.f, 6.f } },      MASK_MISSILESHOT, 0,         0,       0,     0,        999,         },
 	{ WP_MEDIC_ADRENALINE,     Weapon_AdrenalineSyringe,    NULL,                       NULL,               ET_GENERAL,            EF_NONE,                    SVF_NONE,                     CONTENTS_NONE,   TR_LINEAR,      0,                     { { 0, 0, 0 }, { 0, 0, 0 } },                    MASK_SHOT,        0,         0,       0,     0,        0,           },
 	{ WP_AKIMBO_SILENCEDCOLT,  Bullet_Fire,                 NULL,                       NULL,               ET_GENERAL,            EF_NONE,                    SVF_NONE,                     CONTENTS_NONE,   TR_LINEAR,      0,                     { { 0, 0, 0 }, { 0, 0, 0 } },                    MASK_SHOT,        0,         0,       0,     0,        0,           },
 	{ WP_AKIMBO_SILENCEDLUGER, Bullet_Fire,                 NULL,                       NULL,               ET_GENERAL,            EF_NONE,                    SVF_NONE,                     CONTENTS_NONE,   TR_LINEAR,      0,                     { { 0, 0, 0 }, { 0, 0, 0 } },                    MASK_SHOT,        0,         0,       0,     0,        0,           },
 	{ WP_MOBILE_MG42_SET,      Bullet_Fire,                 NULL,                       NULL,               ET_GENERAL,            EF_NONE,                    SVF_NONE,                     CONTENTS_NONE,   TR_LINEAR,      0,                     { { 0, 0, 0 }, { 0, 0, 0 } },                    MASK_SHOT,        0,         0,       0,     0,        0,           },
-	// league weapons
+	// legacy weapons
 	{ WP_KNIFE_KABAR,          Weapon_Knife,                NULL,                       NULL,               ET_GENERAL,            EF_NONE,                    SVF_NONE,                     CONTENTS_NONE,   TR_LINEAR,      0,                     { { 0, 0, 0 }, { 0, 0, 0 } },                    MASK_SHOT,        0,         0,       0,     0,        0,           },
 	{ WP_MOBILE_BROWNING,      Bullet_Fire,                 NULL,                       NULL,               ET_GENERAL,            EF_NONE,                    SVF_NONE,                     CONTENTS_NONE,   TR_LINEAR,      0,                     { { 0, 0, 0 }, { 0, 0, 0 } },                    MASK_SHOT,        0,         0,       0,     0,        0,           },
 	{ WP_MOBILE_BROWNING_SET,  Bullet_Fire,                 NULL,                       NULL,               ET_GENERAL,            EF_NONE,                    SVF_NONE,                     CONTENTS_NONE,   TR_LINEAR,      0,                     { { 0, 0, 0 }, { 0, 0, 0 } },                    MASK_SHOT,        0,         0,       0,     0,        0,           },

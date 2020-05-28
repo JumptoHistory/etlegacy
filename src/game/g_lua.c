@@ -2,10 +2,13 @@
  * @file g_lua.c
  * @brief ET <-> *Lua* interface source file.
  *
- * @copyright This code is derived from ETPub and NQ, and inspired from ETPro
+ * @copyright This code is taken from ETPub and NQ.
  * All credits go to their teams especially to quad and pheno!
+ * http://etpub.org
+ * http://shitstorm.org
  *
- * [League Lua API]: https://etlegacy-lua-docs.readthedocs.io
+ * [ETPro Lua mods]: http://wolfwiki.anime.net/index.php/Lua_Mod_API "ETPro Lua API"
+ * [Legacy Lua API]: http://legacy-lua-api.readthedocs.io/
  */
 #ifdef FEATURE_LUA
 
@@ -47,7 +50,7 @@ static int C_gentity_ptr_to_entNum(unsigned long addr)
 
 /**
  * -------------------------------------
- * Mod function calls from lua
+ * ET Legacy mod function calls from lua
  * -------------------------------------
  * @addtogroup lua_etfncs
  * @{
@@ -1046,9 +1049,6 @@ static const gentity_field_t gclient_fields[] =
 	_et_gclient_addfield(sess.oldmu,                        FIELD_FLOAT,               FIELD_FLAG_READONLY),
 	_et_gclient_addfield(sess.oldsigma,                     FIELD_FLOAT,               FIELD_FLAG_READONLY),
 #endif
-#ifdef FEATURE_PRESTIGE
-	_et_gclient_addfield(sess.prestige,                     FIELD_INT,                 FIELD_FLAG_READONLY),
-#endif
 	_et_gclient_addfield(sess.uci,                          FIELD_INT,                 0),
 
 	_et_gclient_addfield(sess.aWeaponStats,                 FIELD_WEAPONSTAT,          FIELD_FLAG_READONLY),
@@ -1344,7 +1344,7 @@ gentity_t *G_Lua_CreateEntity(char *params)
 
 		if (g_scriptDebug.integer)
 		{
-			G_Printf("%s API %d: set [%s] [%s] [%s]\n", LUA_VERSION, level.time, MODNAME, key, value);
+			G_Printf("%s API %d: set [%s] [%s] [%s]\n", LUA_VERSION, level.time, GAMEVERSION, key, value);
 		}
 
 		if (level.numSpawnVars == MAX_SPAWN_VARS)
@@ -2422,7 +2422,7 @@ static void registerConfigstringConstants(lua_vm_t *vm)
 	lua_regconstinteger(vm->L, CS_CHARGETIMES);
 	lua_regconstinteger(vm->L, CS_FILTERCAMS);
 
-	lua_regconstinteger(vm->L, CS_MODINFO);
+	lua_regconstinteger(vm->L, CS_LEGACYINFO);
 	lua_regconstinteger(vm->L, CS_SVCVAR);
 	lua_regconstinteger(vm->L, CS_CONFIGNAME);
 
@@ -2518,14 +2518,14 @@ static void registerWeaponConstants(lua_vm_t *vm)
 
 	lua_regconstinteger(vm->L, WP_GARAND_SCOPE);         // 40
 	lua_regconstinteger(vm->L, WP_K43_SCOPE);            // 41
-	lua_regconstinteger(vm->L, WP_FG42_SCOPE);           // 42
+	lua_regconstinteger(vm->L, WP_FG42SCOPE);            // 42
 	lua_regconstinteger(vm->L, WP_MORTAR_SET);           // 43
 	lua_regconstinteger(vm->L, WP_MEDIC_ADRENALINE);     // 44
 	lua_regconstinteger(vm->L, WP_AKIMBO_SILENCEDCOLT);  // 45
 	lua_regconstinteger(vm->L, WP_AKIMBO_SILENCEDLUGER); // 46
 	lua_regconstinteger(vm->L, WP_MOBILE_MG42_SET);      // 47
 
-	// league weapons
+	// legacy weapons
 	lua_regconstinteger(vm->L, WP_KNIFE_KABAR);          // 48
 	lua_regconstinteger(vm->L, WP_MOBILE_BROWNING);      // 49
 	lua_regconstinteger(vm->L, WP_MOBILE_BROWNING_SET);  // 50

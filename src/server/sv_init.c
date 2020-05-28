@@ -1067,8 +1067,6 @@ void SV_Init(void)
 
 	sv_allowDownload = Cvar_Get("sv_allowDownload", "1", CVAR_ARCHIVE);
 
-	sv_hidden = Cvar_GetAndDescribe("sv_hidden", "0", CVAR_ARCHIVE, "Hide the server from queries and from master servers.");
-
 	// master servers
 	Cvar_Get("sv_master1", "etmaster.idsoftware.com", CVAR_PROTECTED);
 	Cvar_Get("sv_master2", "master.etlegacy.com", CVAR_PROTECTED);
@@ -1130,7 +1128,7 @@ void SV_Init(void)
 	sv_demoState    = Cvar_Get("sv_demoState", "0", CVAR_ROM);
 	sv_democlients  = Cvar_Get("sv_democlients", "0", CVAR_ROM);
 	sv_autoDemo     = Cvar_Get("sv_autoDemo", "0", CVAR_ARCHIVE);
-	sv_freezeDemo   = Cvar_Get("cl_freezeDemo", "0", CVAR_TEMP); // port from client-side to freeze server-side demos
+	cl_freezeDemo   = Cvar_Get("cl_freezeDemo", "0", CVAR_TEMP); // port from client-side to freeze server-side demos
 	sv_demoTolerant = Cvar_Get("sv_demoTolerant", "0", CVAR_ARCHIVE);
 	sv_demopath     = Cvar_Get("sv_demopath", "", CVAR_ARCHIVE);
 
@@ -1213,7 +1211,7 @@ void SV_Shutdown(const char *finalmsg)
 	IRC_WaitShutdown();
 #endif
 
-	Com_Printf("----- Server Shutdown (%s) -----\n", finalmsg ? finalmsg : "n/a");
+	Com_Printf("----- Server Shutdown ----------\n");
 
 	if (svs.clients && !com_errorEntered)
 	{

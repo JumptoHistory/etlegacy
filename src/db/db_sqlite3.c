@@ -41,7 +41,7 @@
 cvar_t *db_mode;
 cvar_t *db_uri;
 
-sqlite3  *db = NULL;
+sqlite3  *db;
 qboolean isDBActive;
 
 // Important Note
@@ -65,27 +65,34 @@ qboolean isDBActive;
 //   updated (last visit)
 //   created
 //
+// table etl_whitelist
+//   key
+//   filename
+//   type (map or mod)
+//   created
+//
 
 const char *sql_Version_Statements[SQL_DBMS_SCHEMA_VERSION] =
 {
-		// version 1
+		//version 1
 		"CREATE TABLE IF NOT EXISTS etl_version (Id INT PRIMARY KEY NOT NULL, name TEXT, sql TEXT, created TEXT);"  // both
 		"CREATE TABLE IF NOT EXISTS rating_users (guid TEXT PRIMARY KEY NOT NULL, mu REAL, sigma REAL, created TEXT, updated TEXT, UNIQUE (guid));"     // server table
 		"CREATE TABLE IF NOT EXISTS rating_match (guid TEXT PRIMARY KEY NOT NULL, mu REAL, sigma REAL, time_axis INT, time_allies INT, UNIQUE (guid));" // server table
 		"CREATE TABLE IF NOT EXISTS rating_maps (mapname TEXT PRIMARY KEY NOT NULL, win_axis INT, win_allies INT, UNIQUE (mapname));",                  // server table
 		// version 2
-		"CREATE TABLE IF NOT EXISTS prestige_users (guid TEXT PRIMARY KEY NOT NULL, prestige INT, streak INT, skill0 INT, skill1 INT, skill2 INT, skill3 INT, skill4 INT, skill5 INT, skill6 INT, created TEXT, updated TEXT, UNIQUE (guid));" // server table
-		"CREATE TABLE IF NOT EXISTS xpsave_users (guid TEXT PRIMARY KEY NOT NULL, skills BLOB NOT NULL, medals BLOB NOT NULL, created TEXT, updated TEXT, UNIQUE (guid));" // server table
-
 		"CREATE TABLE IF NOT EXISTS client_servers (profile TEXT NOT NULL, source INT NOT NULL, address TEXT NOT NULL, name TEXT NOT NULL, mod TEXT NOT NULL, updated DATETIME, created DATETIME);"
 		"CREATE INDEX IF NOT EXISTS client_servers_profile_idx ON client_servers(profile);"
 		"CREATE INDEX IF NOT EXISTS client_servers_address_idx ON client_servers(address);" // client table
+
+		"CREATE TABLE IF NOT EXISTS etl_whitelist (key TEXT PRIMARY KEY NOT NULL, filename TEXT NOT NULL, updated DATETIME , created DATETIME NOT NULL);"
+		"CREATE INDEX IF NOT EXISTS etl_whitelist_idx ON etl_whitelist(filename);" // client table (no use for server atm)
 
 		// Version 3
 		// ...
 };
 
 /*
+  	  	// version 3?!
 		// ban/mute table (ensure we can also do IP range ban entries)
 		// type = mute/ban
 		// af = AddressFamily
@@ -104,13 +111,6 @@ qboolean DB_Init(void)
 {
 	char *to_ospath;
 	int  msec;
-
-	if(db)
-    {
-	    Com_Printf("Database has already been initialized but not closed properly. Closing now.\n");
-	    sqlite3_close(db);
-	    db = NULL;
-    }
 
 	Com_Printf("----- Database Initialization --\n");
 
@@ -165,7 +165,6 @@ qboolean DB_Init(void)
 			{
 				Com_Printf("... failed to open memory database - error: %s\n", sqlite3_errstr(result));
 				(void) sqlite3_close(db);
-				db = NULL;
 				return qfalse;
 			}
 
@@ -175,7 +174,6 @@ qboolean DB_Init(void)
 			{
 				Com_Printf("... failed to share memory database - error: %s\n", sqlite3_errstr(result));
 				(void) sqlite3_close(db);
-                db = NULL;
 				return qfalse;
 			}
 			else
@@ -218,7 +216,6 @@ qboolean DB_Init(void)
 		if (!DB_Create())
 		{
 			(void) sqlite3_close(db);
-			db = NULL;
 			Com_Printf(S_COLOR_YELLOW "WARNING: can't create database\n");
 			return qfalse;
 		}
@@ -233,7 +230,6 @@ qboolean DB_Init(void)
 	{
 		Com_Printf(S_COLOR_YELLOW "WARNING: SQLite3 ETL: update failed\n");
 		(void) sqlite3_close(db);
-        db = NULL;
 		isDBActive = qfalse;
 		return qfalse;
 	}
@@ -245,7 +241,6 @@ qboolean DB_Init(void)
 		{
 			Com_Printf(S_COLOR_YELLOW "WARNING: can't save memory database file\n");
 			(void) sqlite3_close(db);
-            db = NULL;
 			isDBActive = qfalse;
 			return qfalse;
 		}
@@ -307,15 +302,10 @@ static qboolean DB_CreateOrUpdateSchema(int startSchemaVersion)
 
 /**
  * @brief DB_CallbackVersion
- * @param NotUsed
- * @param[in] argc
- * @param[in] argv
- * @param[in] azColName
- * 
- * @return 0
  */
-int DB_CallbackVersion(__attribute__((unused)) void *NotUsed, int argc, char **argv, char **azColName)
+int DB_CallbackVersion(void *NotUsed, int argc, char **argv, char **azColName)
 {
+	NotUsed = 0;
 	int       i;
 
 	for (i = 0; i < argc; i++)
@@ -576,7 +566,6 @@ qboolean DB_DeInit(void)
 	}
 
 	result     = sqlite3_close(db);
-    db         = NULL;
 	isDBActive = qfalse;
 
 	if (result != SQLITE_OK)
@@ -740,7 +729,7 @@ int DB_LoadOrSaveDb(sqlite3 *pInMemory, const char *zFilename, int isSave)
  *
  * @return 0
  */
-int DB_Callback(__attribute__((unused)) void *NotUsed, int argc, char **argv, char **azColName)
+int DB_Callback(void *NotUsed, int argc, char **argv, char **azColName)
 {
 	int i;
 	// NotUsed = 0;
@@ -759,4 +748,61 @@ int DB_Callback(__attribute__((unused)) void *NotUsed, int argc, char **argv, ch
 	Com_Printf("\n");
 
 	return 0;
+}
+
+/**
+ * @brief Disables autocommit
+ */
+qboolean DB_BeginTransaction(void)
+{
+	char *err_msg = 0;
+
+	if (!isDBActive)
+	{
+		Com_DPrintf("DB_BeginTransaction warning: DB not active error\n");
+		return qfalse;
+	}
+
+	if (sqlite3_exec(db, "BEGIN TRANSACTION", 0, 0, &err_msg) != SQLITE_OK)
+	{
+		Com_Printf("SQL BEGIN TRANSACTION failed: %s\n", err_msg);
+		sqlite3_free(err_msg);
+		return qfalse;
+	}
+	else
+	{
+		Com_DPrintf("SQL ET: autocommit disabled\n");
+	}
+
+	sqlite3_free(err_msg);
+	return qtrue;
+}
+
+/**
+ * @brief Enables autocommit
+ *
+ */
+qboolean DB_EndTransaction(void)
+{
+	char *err_msg = 0;
+
+	if (!isDBActive)
+	{
+		Com_DPrintf("DB_EndTransaction warning: DB not active error\n");
+		return qfalse;
+	}
+
+	if (sqlite3_exec(db, "END TRANSACTION", 0, 0, &err_msg) != SQLITE_OK)
+	{
+		Com_Printf("SQL END TRANSACTION failed: %s\n", err_msg);
+		sqlite3_free(err_msg);
+		return qfalse;
+	}
+	else
+	{
+		Com_DPrintf("SQL ET: autocommit enabled\n");
+	}
+
+	sqlite3_free(err_msg);
+	return qtrue;
 }

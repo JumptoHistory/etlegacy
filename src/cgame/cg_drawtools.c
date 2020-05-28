@@ -557,53 +557,9 @@ float *CG_FadeColor(int startMsec, int totalMsec)
 	return color;
 }
 
-/**
- * @brief CG_LerpColorWithAttack, interpolates colors
- * @param[in] from
- * @param[in] to
- * @param[in] startMsec
- * @oaram[in] totalMsec
- * @param[in] attackMsec (attack delay)
- * @return
- */
-float *CG_LerpColorWithAttack(vec4_t from, vec4_t to, int startMsec, int totalMsec, int attackMsec)
-{
-	static vec4_t color;
-	int           t;
-
-	if (startMsec == 0)
-	{
-		return from;
-	}
-
-	t = cg.time - startMsec;
-
-	if (t >= totalMsec)
-	{
-		return to;
-	}
-
-	// compute transition
-	if (t > attackMsec)
-	{
-		float progress = (float)(t - attackMsec) / (float)(totalMsec - attackMsec);
-		color[0] = from[0] + (to[0] - from[0]) * progress;
-		color[1] = from[1] + (to[1] - from[1]) * progress;
-		color[2] = from[2] + (to[2] - from[2]) * progress;
-		color[3] = from[3] + (to[3] - from[3]) * progress;
-	}
-	else
-	{
-		return from;
-	}
-
-	return color;
-}
-
-
-static vec4_t red       = { 1.0f, 0.2f, 0.2f, 1.0f };
-static vec4_t blue      = { 0.2f, 0.2f, 1.0f, 1.0f };
-static vec4_t other     = { 1.0f, 1.0f, 1.0f, 1.0f };
+static vec4_t red = { 1.0f, 0.2f, 0.2f, 1.0f };
+static vec4_t blue = { 0.2f, 0.2f, 1.0f, 1.0f };
+static vec4_t other = { 1.0f, 1.0f, 1.0f, 1.0f };
 static vec4_t spectator = { 0.7f, 0.7f, 0.7f, 1.0f };
 
 /**
@@ -755,9 +711,9 @@ const char *CG_TranslateString(const char *string)
 qboolean CG_WorldCoordToScreenCoordFloat(vec3_t point, float *x, float *y)
 {
 	vec3_t trans;
-	float  xc, yc;
-	float  px, py;
-	float  z;
+	float xc, yc;
+	float px, py;
+	float z;
 
 	px = (float)tan(DEG2RAD((double)cg.refdef.fov_x) / 2);
 	py = (float)tan(DEG2RAD((double)cg.refdef.fov_y) / 2);
@@ -817,8 +773,8 @@ void CG_AddOnScreenText(const char *text, vec3_t origin)
 			scale = 0.05f;
 		}
 
-		w = CG_Text_Width_Ext(text, scale, 0, &cgs.media.limboFont2);
-		h = CG_Text_Height_Ext(text, scale, 0, &cgs.media.limboFont2);
+		w = CG_Text_Width_Ext(text, scale, 0, &cgs.media.limboFont1);
+		h = CG_Text_Height_Ext(text, scale, 0, &cgs.media.limboFont1);
 
 		x -= w / 2;
 		y -= h / 2;
@@ -838,234 +794,4 @@ void CG_AddOnScreenText(const char *text, vec3_t origin)
 	{
 		Com_Memset(&cg.specOnScreenLabels[cg.specStringCount], 0, sizeof(cg.specOnScreenLabels[cg.specStringCount]));
 	}
-}
-
-/**
- * @brief CG_WordWrapString breaks string onto lines respecting the maxLineChars
- * @param[in]  input
- * @param[in]  maxLineChars
- * @param[out] output
- * @param[in]  maxOutputSize
- */
-char *CG_WordWrapString(const char *input, int maxLineChars, char *output, int maxOutputSize)
-{
-	int i = 0, o = 0, l, k;
-	int lineSplit = 0;
-	int lineWidth = 0;
-
-	if (!input || !output || maxOutputSize <= 0)
-	{
-		return NULL;
-	}
-
-	while (input[i] && (o + 1) < maxOutputSize)
-	{
-		// split line
-		if (lineWidth >= maxLineChars)
-		{
-			// line might end on certain line break characters
-			if (input[i] == ' ')
-			{
-				while (input[i] && input[i] == ' ')
-					i++;                                 // eat trailing spaces
-			}
-			else if (input[i] == '\\' && input[i + 1] == 'n')
-			{
-				i += 2; // eat linebreak marker
-			}
-			else if (input[i] == '\n')
-			{
-				i++; // eat linebreak
-			}
-			else if (lineSplit)
-			{
-				output[lineSplit] = '\n';
-				lineWidth         = Q_UTF8_PrintStrlenExt(output + lineSplit + 1, o - (lineSplit + 1)); // get line length
-				lineSplit         = 0;
-				continue;
-			}
-			output[o++] = '\n';
-			lineWidth   = 0;
-			lineSplit   = 0;
-			continue;
-		}
-
-		// linebreak marker
-		if (input[i] == '\\' && input[i + 1] == 'n')
-		{
-			i          += 2; // eat linebreak marker
-			output[o++] = '\n';
-			lineSplit   = 0;
-			lineWidth   = 0;
-			continue;
-		}
-		else if (Q_IsColorString((input + i)))
-		{
-			lineWidth -= 2;
-		}
-		else if (input[i] == ' ')
-		{
-			lineSplit = o; // record last encountered whitespace
-		}
-		else if (input[i] == '\n')
-		{
-			lineSplit = 0;
-			lineWidth = -1;
-		}
-		else if ((unsigned char)input[i] > 0x7F)
-		{
-			l = Q_UTF8_Width(input + i);
-
-			for (k = 0; k < l; k++)
-			{
-				output[o++] = input[i++]; // copy surrogates
-			}
-
-			lineWidth++;
-			continue;
-		}
-
-		output[o++] = input[i++];
-		lineWidth++;
-	}
-
-	output[o] = 0;
-
-	return output;
-}
-
-/**
- * @brief CG_ComputeLinePosX
- * @param[in] x
- * @param[in] scalex
- * @param[in] text
- * @param[in] align
- * @param[in] font
- */
-static int CG_ComputeLinePosX(float x, float scalex, const char *text, int align, fontHelper_t *font)
-{
-	int        lineW, lineL = 0;
-	const char *ln = strchr(text, '\n');
-
-	if (ln)
-	{
-		lineL = Q_UTF8_PrintStrlenExt(text, ln - text);
-	}
-
-	lineW = CG_Text_Width_Ext(text, scalex, lineL, font);
-
-	if (align == ITEM_ALIGN_CENTER)
-	{
-		return x - lineW / 2;
-	}
-	else if (align == ITEM_ALIGN_RIGHT)
-	{
-		return x - lineW;
-	}
-
-	return x;
-}
-
-/**
- * @brief CG_DrawMultilineText
- * @param[in] x
- * @param[in] y
- * @param[in] scalex
- * @param[in] scaley
- * @param[in] color
- * @param[in] text
- * @param[in] lineHeight
- * @param[in] adjust
- * @param[in] limit
- * @param[in] style
- * @param[in] align
- * @param[in] font
- */
-void CG_DrawMultilineText(float x, float y, float scalex, float scaley, vec4_t color, const char *text, int lineHeight, float adjust, int limit, int style, int align, fontHelper_t *font)
-{
-	vec4_t      newColor;
-	glyphInfo_t *glyph;
-	const char  *s = text;
-	float       yadj;
-	int         count = 0, ofs;
-	int         lineX = x, lineY = y;
-	float       fontSizeX = scalex;
-	float       fontSizeY = scaley;
-
-	if (!text)
-	{
-		return;
-	}
-
-	fontSizeX *= Q_UTF8_GlyphScale(font);
-	fontSizeY *= Q_UTF8_GlyphScale(font);
-
-	trap_R_SetColor(color);
-	Vector4Copy(color, newColor);
-
-	if (limit <= 0)
-	{
-		limit = MAX_QINT;
-	}
-
-	if (align > ITEM_ALIGN_LEFT)
-	{
-		lineX = CG_ComputeLinePosX(x, scalex, text, align, font);
-	}
-
-	while (s && *s && count < limit)
-	{
-		if (*s == '\n')
-		{
-			s++;
-			lineY += lineHeight;
-
-			if (align > ITEM_ALIGN_LEFT)
-			{
-				lineX = CG_ComputeLinePosX(x, scalex, s, align, font);
-			}
-			else
-			{
-				lineX = x;
-			}
-			continue;
-		}
-
-		glyph = Q_UTF8_GetGlyph(font, s);
-
-		if (Q_IsColorString(s))
-		{
-			if (*(s + 1) == COLOR_NULL)
-			{
-				Vector4Copy(color, newColor);
-			}
-			else
-			{
-				Com_Memcpy(newColor, g_color_table[ColorIndex(*(s + 1))], sizeof(newColor));
-				newColor[3] = color[3];
-			}
-			trap_R_SetColor(newColor);
-			s += 2;
-			continue;
-		}
-
-		yadj = fontSizeY * glyph->top;
-
-		if (style == ITEM_TEXTSTYLE_SHADOWED || style == ITEM_TEXTSTYLE_SHADOWEDMORE)
-		{
-			ofs           = style == ITEM_TEXTSTYLE_SHADOWED ? 1 : 2;
-			colorBlack[3] = newColor[3];
-			trap_R_SetColor(colorBlack);
-			CG_Text_PaintChar_Ext(lineX + (glyph->pitch * fontSizeX) + ofs, lineY - yadj + ofs, glyph->imageWidth, glyph->imageHeight, fontSizeX, fontSizeY, glyph->s, glyph->t, glyph->s2, glyph->t2, glyph->glyph);
-			colorBlack[3] = 1.0;
-			trap_R_SetColor(newColor);
-		}
-
-		CG_Text_PaintChar_Ext(lineX + (glyph->pitch * fontSizeX), lineY - yadj, glyph->imageWidth, glyph->imageHeight, fontSizeX, fontSizeY, glyph->s, glyph->t, glyph->s2, glyph->t2, glyph->glyph);
-		lineX += (glyph->xSkip * fontSizeX) + adjust;
-		s     += Q_UTF8_Width(s);
-		count++;
-	}
-
-	trap_R_SetColor(NULL);
 }

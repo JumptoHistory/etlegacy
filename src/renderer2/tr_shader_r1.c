@@ -39,16 +39,6 @@
 static char **shaderTextHashTableR1[MAX_SHADERTEXT_HASH];
 static char *s_shaderTextR1;
 
-extern shaderTable_t *shaderTableHashTable[MAX_SHADERTABLE_HASH];
-
-extern shader_t        shader;
-extern dynamicShader_t *dshader;
-extern shaderTable_t   table;
-extern shaderStage_t   stages[MAX_SHADER_STAGES];
-extern char            implicitMap[MAX_QPATH];
-extern unsigned        implicitStateBits;
-extern cullType_t      implicitCullType;
-
 /**
  * @brief ParseVector
  * @param[in,out] text
@@ -960,8 +950,8 @@ int ScanAndLoadShaderFilesR1()
 	char         filename[MAX_QPATH];
 	long         sum = 0, summand;
 
-	Com_Memset(buffers, 0, sizeof(buffers));
-	Com_Memset(shaderTextHashTableSizes, 0, sizeof(shaderTextHashTableSizes));
+	Com_Memset(buffers, 0, MAX_SHADER_FILES);
+	Com_Memset(shaderTextHashTableSizes, 0, MAX_SHADER_FILES);
 
 	// scan for shader files
 	shaderFiles = ri.FS_ListFiles("scripts", ".shader", &numShaderFiles);

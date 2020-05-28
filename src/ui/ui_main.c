@@ -67,7 +67,7 @@ static void UI_StopServerRefresh(void);
 static void UI_DoServerRefresh(void);
 static void UI_FeederSelection(int feederID, int index);
 static qboolean UI_FeederSelectionClick(itemDef_t *item);
-static void UI_BuildServerDisplayList(qboolean force);
+static void UI_BuildServerDisplayList(int force);
 static void UI_BuildServerStatus(qboolean force);
 static int QDECL UI_ServersQsortCompare(const void *arg1, const void *arg2);
 static int UI_MapCountByGameType(qboolean singlePlayer);
@@ -84,7 +84,7 @@ void Menu_ShowItemByName(menuDef_t *menu, const char *p, qboolean bShow);
 
 static char translated_yes[4], translated_no[4];
 
-void UI_Init(int etLegacyClient, int clientVersion);
+void UI_Init(int legacyClient, int clientVersion);
 void UI_Shutdown(void);
 void UI_KeyEvent(int key, qboolean down);
 void UI_MouseEvent(int dx, int dy);
@@ -1296,10 +1296,10 @@ void UI_LoadMenus(const char *menuFile, qboolean reset)
 		trap_PC_AddGlobalDefine("FUI");
 	}
 
-	// we can now add elements which only work with ET:Legacy client
-	if (uiInfo.etLegacyClient)
+	//We can now add elements which only work with legacy client
+	if (uiInfo.legacyClient)
 	{
-		trap_PC_AddGlobalDefine("ETLEGACY");
+		trap_PC_AddGlobalDefine("LEGACY");
 	}
 
 	trap_PC_AddGlobalDefine(va("__WINDOW_WIDTH %f", (uiInfo.uiDC.glconfig.windowAspect / RATIO43) * 640));
@@ -1327,8 +1327,12 @@ void UI_LoadMenus(const char *menuFile, qboolean reset)
 		{
 			break;
 		}
-
 		if (token.string[0] == '\0' || token.string[0] == '}')
+		{
+			break;
+		}
+
+		if (token.string[0] == '}')
 		{
 			break;
 		}
@@ -1364,11 +1368,6 @@ void UI_Load(void)
 	{
 		Q_strncpyz(lastName, menu->window.name, sizeof(lastName));
 	}
-	else
-	{
-		lastName[0] = '\0';
-	}
-
 	if (menuSet == NULL || menuSet[0] == '\0')
 	{
 		menuSet = "ui/menus.txt";
@@ -3776,7 +3775,7 @@ static qboolean UI_NetFilter_HandleKey(int flags, int *special, int key)
 		{
 			ui_serverFilterType.integer = numServerFilters - 1;
 		}
-		UI_BuildServerDisplayList(qtrue);
+		UI_BuildServerDisplayList(1);
 		return qtrue;
 	}
 	return qfalse;
@@ -4343,23 +4342,22 @@ void UI_GLCustom()
 
 	switch (ui_r_windowmode)
 	{
-	case 1: // fullscreen
+	case 1:
 		DC->setCVar("ui_r_fullscreen", "1");
 		DC->setCVar("ui_r_noborder", "0");
 		break;
-	case 2: // windowed fullscreen
+	case 2:
 		DC->setCVar("ui_r_fullscreen", "0");
 		DC->setCVar("ui_r_mode", "-2");
 		DC->setCVar("ui_r_noborder", "1");
 		break;
-	case 0: // windowed
+	case 0:
 	default:
 		DC->setCVar("ui_r_fullscreen", "0");
-		DC->setCVar("ui_r_noborder", "0");
 		break;
 	}
 
-	trap_Cvar_Set("ui_glCustom", "1");
+	trap_Cvar_Set("ui_glCustom", "4");
 }
 
 
@@ -4500,12 +4498,12 @@ void UI_RunMenuScript(char **args)
 		else if (Q_stricmp(name, "RefreshServers") == 0)
 		{
 			UI_StartServerRefresh(qtrue);
-			UI_BuildServerDisplayList(qtrue);
+			UI_BuildServerDisplayList(1);
 		}
 		else if (Q_stricmp(name, "RefreshFilter") == 0)
 		{
 			UI_StartServerRefresh(uiInfo.serverStatus.numDisplayServers ? qfalse : qtrue);      // if we don't have any valid servers, it's kinda safe to assume we would like to get a full new list
-			UI_BuildServerDisplayList(qtrue);
+			UI_BuildServerDisplayList(1);
 		}
 		else if (Q_stricmp(name, "LoadDemos") == 0)
 		{
@@ -4553,7 +4551,7 @@ void UI_RunMenuScript(char **args)
 				UI_StopServerRefresh();
 				uiInfo.serverStatus.nextDisplayRefresh = 0;
 				uiInfo.nextServerStatusRefresh         = 0;
-				UI_BuildServerDisplayList(qtrue);
+				UI_BuildServerDisplayList(1);
 			}
 			else
 			{
@@ -4574,7 +4572,7 @@ void UI_RunMenuScript(char **args)
 			{
 				UI_StartServerRefresh(qtrue);
 			}
-			UI_BuildServerDisplayList(qtrue);
+			UI_BuildServerDisplayList(1);
 			UI_FeederSelection(FEEDER_SERVERS, 0);
 		}
 		else if (Q_stricmp(name, "check_ServerStatus") == 0)
@@ -4891,7 +4889,7 @@ void UI_RunMenuScript(char **args)
 		else if (Q_stricmp(name, "removeFavorites") == 0)
 		{
 			UI_RemoveAllFavourites_f();
-			UI_BuildServerDisplayList(qtrue);
+			UI_BuildServerDisplayList(1);
 		}
 		else if (Q_stricmp(name, "createFavorite") == 0)
 		{
@@ -5637,7 +5635,6 @@ void UI_RunMenuScript(char **args)
 			int   ui_r_colorbits                      = (int)(trap_Cvar_VariableValue("r_colorbits"));
 			int   ui_r_fullscreen                     = (int)(trap_Cvar_VariableValue("r_fullscreen"));
 			int   ui_r_noborder                       = (int)(trap_Cvar_VariableValue("r_noborder"));
-			int   ui_r_centerwindow                   = (int)(trap_Cvar_VariableValue("r_centerwindow"));
 			float ui_r_intensity                      = trap_Cvar_VariableValue("r_intensity");
 			int   ui_r_mapoverbrightbits              = (int)(trap_Cvar_VariableValue("r_mapoverbrightbits"));
 			int   ui_r_overBrightBits                 = (int)(trap_Cvar_VariableValue("r_overBrightBits"));
@@ -5682,7 +5679,6 @@ void UI_RunMenuScript(char **args)
 
 			trap_Cvar_Set("ui_r_fullscreen", va("%i", ui_r_fullscreen));
 			trap_Cvar_Set("ui_r_noborder", va("%i", ui_r_noborder));
-			trap_Cvar_Set("ui_r_centerwindow", va("%i", ui_r_centerwindow));
 			trap_Cvar_Set("ui_r_mapoverbrightbits", va("%i", ui_r_mapoverbrightbits));
 			trap_Cvar_Set("ui_r_overBrightBits", va("%i", ui_r_overBrightBits));
 			trap_Cvar_Set("ui_r_lodbias", va("%i", ui_r_lodbias));
@@ -5746,7 +5742,6 @@ void UI_RunMenuScript(char **args)
 			int   ui_r_colorbits                      = (int)(trap_Cvar_VariableValue("ui_r_colorbits"));
 			int   ui_r_fullscreen                     = (int)(trap_Cvar_VariableValue("ui_r_fullscreen"));
 			int   ui_r_noborder                       = (int)(trap_Cvar_VariableValue("ui_r_noborder"));
-			int   ui_r_centerwindow                   = (int)(trap_Cvar_VariableValue("ui_r_centerwindow"));
 			float ui_r_intensity                      = trap_Cvar_VariableValue("ui_r_intensity");
 			int   ui_r_mapoverbrightbits              = (int)(trap_Cvar_VariableValue("ui_r_mapoverbrightbits"));
 			int   ui_r_overBrightBits                 = (int)(trap_Cvar_VariableValue("ui_r_overBrightBits"));
@@ -5797,7 +5792,6 @@ void UI_RunMenuScript(char **args)
 			}
 
 			trap_Cvar_Set("r_noborder", va("%i", ui_r_noborder));
-			trap_Cvar_Set("r_centerwindow", va("%i", ui_r_centerwindow));
 			trap_Cvar_Set("r_intensity", va("%f", ui_r_intensity));
 			trap_Cvar_Set("r_mapoverbrightbits", va("%i", ui_r_mapoverbrightbits));
 			trap_Cvar_Set("r_overBrightBits", va("%i", ui_r_overBrightBits));
@@ -5828,7 +5822,6 @@ void UI_RunMenuScript(char **args)
 			trap_Cvar_Set("ui_r_colorbits", "");
 			trap_Cvar_Set("ui_r_fullscreen", "");
 			trap_Cvar_Set("ui_r_noborder", "");
-			trap_Cvar_Set("ui_r_centerwindow", "");
 			trap_Cvar_Set("ui_r_intensity", "");
 			trap_Cvar_Set("ui_r_mapoverbrightbits", "");
 			trap_Cvar_Set("ui_r_overBrightBits", "");
@@ -6171,15 +6164,21 @@ static void UI_BinaryServerInsertion(int num)
  * @brief UI_BuildServerDisplayList
  * @param[in] force
  */
-static void UI_BuildServerDisplayList(qboolean force)
+static void UI_BuildServerDisplayList(int force)
 {
-	int        i, count, total, clients, humans, maxClients, ping, game, len, friendlyFire, maxlives, punkbuster, antilag, password, weaponrestricted, balancedteams;
+	int        i, count, clients, humans, maxClients, ping, game, len, friendlyFire, maxlives, punkbuster, antilag, password, weaponrestricted, balancedteams;
 	char       info[MAX_STRING_CHARS];
 	static int numinvisible;
 
-	if (!(force || uiInfo.uiDC.realTime > uiInfo.serverStatus.nextDisplayRefresh))
+	if (!(force > 0 || uiInfo.uiDC.realTime > uiInfo.serverStatus.nextDisplayRefresh))
 	{
 		return;
+	}
+
+	// if we shouldn't reset
+	if (force == 2)
+	{
+		force = 0;
 	}
 
 	// do motd updates here too
@@ -6187,7 +6186,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 	len = Q_UTF8_Strlen(uiInfo.serverStatus.motd);
 	if (len == 0)
 	{
-		Q_strncpyz(uiInfo.serverStatus.motd, va("ET: Legacy - Version: %s", ETLEGACY_VERSION), sizeof(uiInfo.serverStatus.motd));
+		Q_strncpyz(uiInfo.serverStatus.motd, va("Enemy Territory: Legacy - Version: %s", ETLEGACY_VERSION), sizeof(uiInfo.serverStatus.motd));
 		len = Q_UTF8_Strlen(uiInfo.serverStatus.motd);
 	}
 	if (len != uiInfo.serverStatus.motdLen)
@@ -6196,16 +6195,12 @@ static void UI_BuildServerDisplayList(qboolean force)
 		uiInfo.serverStatus.motdWidth = -1;
 	}
 
-	uiInfo.serverStatus.numInvalidServers = 0;
-
-	if (force)
+	if (force == 1)
 	{
 		numinvisible = 0;
 		// clear number of displayed servers
-		uiInfo.serverStatus.numIncompatibleServers = 0;
-		uiInfo.serverStatus.numDisplayServers      = 0;
-		uiInfo.serverStatus.numPlayersOnServers    = 0;
-		uiInfo.serverStatus.numHumansOnServers     = 0;
+		uiInfo.serverStatus.numDisplayServers   = 0;
+		uiInfo.serverStatus.numPlayersOnServers = 0;
 		// set list box index to zero
 		Menu_SetFeederSelection(NULL, FEEDER_SERVERS, 0, NULL);
 		// mark all servers as visible so we store ping updates for them
@@ -6214,16 +6209,13 @@ static void UI_BuildServerDisplayList(qboolean force)
 
 	// get the server count (comes from the master)
 	count = trap_LAN_GetServerCount(ui_netSource.integer);
-
 	if (count == -1 || (ui_netSource.integer == AS_LOCAL && count == 0))
 	{
 		// still waiting on a response from the master
-		uiInfo.serverStatus.numIncompatibleServers = 0;
-		uiInfo.serverStatus.numDisplayServers      = 0;
-		uiInfo.serverStatus.numPlayersOnServers    = 0;
-		uiInfo.serverStatus.numHumansOnServers     = 0;
-		uiInfo.serverStatus.nextDisplayRefresh     = uiInfo.uiDC.realTime + 500;
-		uiInfo.serverStatus.currentServerPreview   = 0;
+		uiInfo.serverStatus.numDisplayServers    = 0;
+		uiInfo.serverStatus.numPlayersOnServers  = 0;
+		uiInfo.serverStatus.nextDisplayRefresh   = uiInfo.uiDC.realTime + 500;
+		uiInfo.serverStatus.currentServerPreview = 0;
 		return;
 	}
 
@@ -6246,41 +6238,20 @@ static void UI_BuildServerDisplayList(qboolean force)
 		{
 			trap_LAN_GetServerInfo(ui_netSource.integer, i, info, MAX_STRING_CHARS);
 
+			clients                                  = atoi(Info_ValueForKey(info, "clients"));
+			maxClients                               = atoi(Info_ValueForKey(info, "sv_maxclients"));
+			uiInfo.serverStatus.numPlayersOnServers += clients;
+
 			// drop obvious phony servers
-			maxClients = atoi(Info_ValueForKey(info, "sv_maxclients"));
 			if (maxClients > MAX_CLIENTS && !(ui_serverBrowserSettings.integer & UI_BROWSER_ALLOW_MAX_CLIENTS))
 			{
-				uiInfo.serverStatus.numIncompatibleServers++;
 				trap_LAN_MarkServerVisible(ui_netSource.integer, i, qfalse);
 				continue;
-			}
-
-			// don't show PunkBuster servers for ET: Legacy
-			punkbuster = atoi(Info_ValueForKey(info, "punkbuster"));
-			if (punkbuster)
-			{
-				uiInfo.serverStatus.numIncompatibleServers++;
-				trap_LAN_MarkServerVisible(ui_netSource.integer, i, qfalse);
-				continue;
-			}
-
-			// don't show ETPro servers for ET: Legacy :/
-			{
-				const char *gamename = Info_ValueForKey(info, "game");
-
-				if (Q_stricmp(gamename, "etpro") == 0)
-				{
-					uiInfo.serverStatus.numIncompatibleServers++;
-					trap_LAN_MarkServerVisible(ui_netSource.integer, i, qfalse);
-					continue;
-				}
 			}
 
 			trap_Cvar_Update(&ui_browserShowEmptyOrFull);
 			if (ui_browserShowEmptyOrFull.integer)
 			{
-				clients = atoi(Info_ValueForKey(info, "clients"));
-
 				if (clients < maxClients && (
 						(!clients && ui_browserShowEmptyOrFull.integer == 2) ||
 						(clients && ui_browserShowEmptyOrFull.integer == 1)))
@@ -6335,6 +6306,14 @@ static void UI_BuildServerDisplayList(qboolean force)
 				}
 			}
 
+			// don't show PunkBuster servers for ET: Legacy
+			punkbuster = atoi(Info_ValueForKey(info, "punkbuster"));
+			if (punkbuster)
+			{
+				trap_LAN_MarkServerVisible(ui_netSource.integer, i, qfalse);
+				continue;
+			}
+
 			trap_Cvar_Update(&ui_browserShowAntilag);
 			if (ui_browserShowAntilag.integer)
 			{
@@ -6377,7 +6356,7 @@ static void UI_BuildServerDisplayList(qboolean force)
 			trap_Cvar_Update(&ui_browserShowHumans);
 			if (ui_browserShowHumans.integer)
 			{
-				// Default mod or ETL servers only
+				// Legacy mod or ETL servers only
 				// FIXME: check for ping and compute humans/bots number for vanilla server?
 				if (strstr(Info_ValueForKey(info, "version"), PRODUCT_LABEL) == NULL)
 				{
@@ -6554,25 +6533,15 @@ static void UI_BuildServerDisplayList(qboolean force)
 				}
 			}
 
-			// player count after removing incompatible/filtered out servers
-			clients = atoi(Info_ValueForKey(info, "clients"));
-			humans  = atoi(Info_ValueForKey(info, "humans"));
+			// ET Legacy doesn't display etpro servers :/
+			{
+				const char *gamename = Info_ValueForKey(info, "game");
 
-			if ((ui_serverBrowserSettings.integer & UI_BROWSER_ALLOW_HUMANS_COUNT) &&
-			    strstr(Info_ValueForKey(info, "version"), PRODUCT_LABEL) != NULL)
-			{
-				uiInfo.serverStatus.numPlayersOnServers += clients;
-				uiInfo.serverStatus.numHumansOnServers  += humans;
-			}
-			else if (Q_stristr(Info_ValueForKey(info, "game"), "legacy") != 0 &&
-			         strstr(Info_ValueForKey(info, "version"), PRODUCT_LABEL) != NULL)
-			{
-				uiInfo.serverStatus.numPlayersOnServers += clients;
-				uiInfo.serverStatus.numHumansOnServers  += humans;
-			}
-			else
-			{
-				uiInfo.serverStatus.numPlayersOnServers += clients;
+				if (Q_stricmp(gamename, "etpro") == 0)
+				{
+					trap_LAN_MarkServerVisible(ui_netSource.integer, i, qfalse);
+					continue;
+				}
 			}
 
 			// make sure we never add a favorite server twice
@@ -6596,7 +6565,6 @@ static void UI_BuildServerDisplayList(qboolean force)
 			}
 
 			UI_BinaryServerInsertion(i);
-
 			// done with this server
 			if (ping > /*=*/ 0)
 			{
@@ -6604,28 +6572,20 @@ static void UI_BuildServerDisplayList(qboolean force)
 				numinvisible++;
 			}
 		}
-		else
-		{
-			// invalid data
-			uiInfo.serverStatus.numInvalidServers++;
-		}
 	}
 
 	uiInfo.serverStatus.refreshtime = uiInfo.uiDC.realTime;
 
-	// Adjust server count
-	total = count - uiInfo.serverStatus.numInvalidServers - uiInfo.serverStatus.numIncompatibleServers;
-
 	// Set the filter text
-	if (total > 0)
+	if (count > 0)
 	{
 		if (numinvisible > 0)
 		{
-			DC->setCVar("ui_tmp_ServersFiltered", va(trap_TranslateString("Filtered/Total: %03i/%03i"), numinvisible, total));
+			DC->setCVar("ui_tmp_ServersFiltered", va(trap_TranslateString("Filtered/Total: %03i/%03i"), numinvisible, count));
 		}
 		else
 		{
-			DC->setCVar("ui_tmp_ServersFiltered", va(trap_TranslateString("^3Check your filters - no servers found!              ^9Filtered/Total: ^3%03i^9/%03i"), numinvisible, total));
+			DC->setCVar("ui_tmp_ServersFiltered", va(trap_TranslateString("^3Check your filters - no servers found!              ^9Filtered/Total: ^3%03i^9/%03i"), numinvisible, count));
 		}
 	}
 	else
@@ -7797,7 +7757,7 @@ static qboolean UI_FeederSelectionClick(itemDef_t *item)
 					trap_LAN_RemoveServer(AS_FAVORITES, addr);
 					if (ui_netSource.integer == AS_FAVORITES)
 					{
-						UI_BuildServerDisplayList(qtrue);
+						UI_BuildServerDisplayList(1);
 						UI_FeederSelection(FEEDER_SERVERS, 0);
 					}
 				}
@@ -8078,13 +8038,13 @@ static void UI_RunCinematicFrame(int handle)
 
 /**
  * @brief _UI_Init
- * @param[in] etLegacyClient
+ * @param[in] legacyClient
  * @param[in] clientVersion
  */
-void UI_Init(int etLegacyClient, int clientVersion)
+void UI_Init(int legacyClient, int clientVersion)
 {
 	int x;
-	Com_Printf(S_COLOR_MDGREY "Initializing %s ui " S_COLOR_GREEN ETLEGACY_VERSION "\n", MODNAME);
+	Com_Printf(S_COLOR_MDGREY "Initializing Legacy ui " S_COLOR_GREEN ETLEGACY_VERSION "\n");
 
 	UI_RegisterCvars();
 	UI_InitMemory();
@@ -8111,9 +8071,9 @@ void UI_Init(int etLegacyClient, int clientVersion)
 		uiInfo.uiDC.bias = 0;
 	}
 
-	MOD_CHECK_ETLEGACY(etLegacyClient, clientVersion, uiInfo.etLegacyClient);
+	MOD_CHECK_LEGACY(legacyClient, clientVersion, uiInfo.legacyClient);
 
-	if (uiInfo.etLegacyClient <= 0)
+	if (uiInfo.legacyClient <= 0)
 	{
 		uiInfo.uiDC.glconfig.windowAspect = (float)uiInfo.uiDC.glconfig.vidWidth / (float)uiInfo.uiDC.glconfig.vidHeight;
 	}
@@ -8732,7 +8692,7 @@ vmCvar_t ui_serverBrowserSettings;
 static cvarTable_t cvarTable[] =
 {
 	{ NULL,                             "ui_textfield_temp",                   "",                           CVAR_TEMP,                      0 },
-	{ &ui_glCustom,                     "ui_glCustom",                         "1",                          CVAR_ARCHIVE,                   0 },
+	{ &ui_glCustom,                     "ui_glCustom",                         "4",                          CVAR_ARCHIVE,                   0 },
 
 	{ &ui_friendlyFire,                 "g_friendlyFire",                      "1",                          CVAR_ARCHIVE,                   0 },
 
@@ -8803,6 +8763,7 @@ static cvarTable_t cvarTable[] =
 	{ NULL,                             "cg_crosshairAlpha",                   "1.0",                        CVAR_ARCHIVE,                   0 },
 	{ NULL,                             "cg_crosshairColorAlt",                "White",                      CVAR_ARCHIVE,                   0 },
 	{ NULL,                             "cg_coronafardist",                    "1536",                       CVAR_ARCHIVE,                   0 },
+	{ NULL,                             "cg_wolfparticles",                    "1",                          CVAR_ARCHIVE,                   0 },
 	{ NULL,                             "g_password",                          "none",                       CVAR_USERINFO,                  0 },
 	{ NULL,                             "g_antilag",                           "1",                          CVAR_SERVERINFO | CVAR_ARCHIVE, 0 },
 	{ NULL,                             "g_warmup",                            "60",                         CVAR_ARCHIVE,                   0 },
@@ -8875,7 +8836,6 @@ static cvarTable_t cvarTable[] =
 	{ NULL,                             "vote_allow_surrender",                "1",                          CVAR_ARCHIVE,                   0 },
 	{ NULL,                             "vote_allow_restartcampaign",          "1",                          CVAR_ARCHIVE,                   0 },
 	{ NULL,                             "vote_allow_nextcampaign",             "1",                          CVAR_ARCHIVE,                   0 },
-	{ NULL,                             "vote_allow_cointoss",                 "1",                          CVAR_ARCHIVE,                   0 },
 	{ NULL,                             "vote_allow_poll",                     "1",                          CVAR_ARCHIVE,                   0 },
 
 	{ NULL,                             "ui_cl_lang",                          "",                           CVAR_ARCHIVE,                   0 },
@@ -8964,7 +8924,7 @@ void UI_UpdateCvars(void)
  */
 static void UI_StopServerRefresh(void)
 {
-	int count, total;
+	int count;
 
 	if (!uiInfo.serverStatus.refreshActive)
 	{
@@ -8972,43 +8932,14 @@ static void UI_StopServerRefresh(void)
 		return;
 	}
 	uiInfo.serverStatus.refreshActive = qfalse;
-
-	// invalid data
-	//if (uiInfo.serverStatus.numInvalidServers > 0)
-	//{
-	//	Com_Printf(trap_TranslateString("^9%d^7 servers not listed (invalid data)\n"),
-	//	           uiInfo.serverStatus.numInvalidServers);
-	//}
-
-	if (uiInfo.serverStatus.numIncompatibleServers > 0)
-	{
-		Com_Printf(trap_TranslateString("^1%d^7 servers not listed (incompatible or fake)\n"),
-		           uiInfo.serverStatus.numIncompatibleServers);
-	}
-
+	Com_Printf(trap_TranslateString("%d servers listed in browser with %d players.\n"),
+	           uiInfo.serverStatus.numDisplayServers,
+	           uiInfo.serverStatus.numPlayersOnServers);
 	count = trap_LAN_GetServerCount(ui_netSource.integer);
-
-	// adjust count for invalid data
-	total = count - uiInfo.serverStatus.numInvalidServers - uiInfo.serverStatus.numIncompatibleServers - uiInfo.serverStatus.numDisplayServers;
-
-	if (total > 0)
+	if (count - uiInfo.serverStatus.numDisplayServers > 0)
 	{
-		Com_Printf(trap_TranslateString("^3%d^7 servers not listed (filtered out by browser settings)\n"), total);
-	}
-
-	// FIXME: number of humans is wrong for favorites, why?
-	if (uiInfo.serverStatus.numHumansOnServers > 0 && ui_netSource.integer != AS_FAVORITES)
-	{
-		Com_Printf(trap_TranslateString("^2%d^7 servers listed with ^3%d^7 players (including ^3%d^7 humans at least)\n"),
-		           uiInfo.serverStatus.numDisplayServers,
-		           uiInfo.serverStatus.numPlayersOnServers,
-		           uiInfo.serverStatus.numHumansOnServers);
-	}
-	else
-	{
-		Com_Printf(trap_TranslateString("^2%d^7 servers listed with ^3%d^7 players\n"),
-		           uiInfo.serverStatus.numDisplayServers,
-		           uiInfo.serverStatus.numPlayersOnServers);
+		Com_Printf(trap_TranslateString("%d servers not listed (filtered out by game browser settings)\n"),
+		           count - uiInfo.serverStatus.numDisplayServers);
 	}
 }
 
@@ -9058,12 +8989,12 @@ static void UI_DoServerRefresh(void)
 	else if (!wait)
 	{
 		// get the last servers in the list
-		UI_BuildServerDisplayList(qtrue);
+		UI_BuildServerDisplayList(2);
 		// stop the refresh
 		UI_StopServerRefresh();
 	}
 
-	UI_BuildServerDisplayList(qfalse);
+	UI_BuildServerDisplayList(0);
 }
 
 /**
@@ -9089,10 +9020,8 @@ static void UI_StartServerRefresh(qboolean full)
 	uiInfo.serverStatus.refreshActive      = qtrue;
 	uiInfo.serverStatus.nextDisplayRefresh = uiInfo.uiDC.realTime + 1000;
 	// clear number of displayed servers
-	uiInfo.serverStatus.numIncompatibleServers = 0;
-	uiInfo.serverStatus.numDisplayServers      = 0;
-	uiInfo.serverStatus.numPlayersOnServers    = 0;
-	uiInfo.serverStatus.numHumansOnServers     = 0;
+	uiInfo.serverStatus.numDisplayServers   = 0;
+	uiInfo.serverStatus.numPlayersOnServers = 0;
 	// mark all servers as visible so we store ping updates for them
 	trap_LAN_MarkServerVisible(ui_netSource.integer, -1, qtrue);
 	// reset all the pings

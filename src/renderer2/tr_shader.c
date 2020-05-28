@@ -37,6 +37,7 @@
 
 #include "tr_shader.h"
 
+
 static char **guideTextHashTable[MAX_GUIDETEXT_HASH];
 static char **shaderTextHashTable[MAX_SHADERTEXT_HASH];
 
@@ -45,18 +46,6 @@ static char *s_shaderText;
 
 static int numMaterialFiles; // R2 files
 static int numShaderFiles;   // R1 files
-
-shaderTable_t *shaderTableHashTable[MAX_SHADERTABLE_HASH];
-shader_t     *shaderHashTable[FILE_HASH_SIZE];
-texModInfo_t texMods[MAX_SHADER_STAGES][TR_MAX_TEXMODS];
-
-shader_t        shader;
-dynamicShader_t *dshader;
-shaderTable_t   table;
-shaderStage_t   stages[MAX_SHADER_STAGES];
-char            implicitMap[MAX_QPATH];
-unsigned        implicitStateBits;
-cullType_t      implicitCullType;
 
 /**
  * @brief R_RemapShader
@@ -1547,6 +1536,11 @@ qboolean LoadMap(shaderStage_t *stage, char *buffer)
 	{
 		stage->type = ST_LIGHTMAP;
 		return qtrue;
+	}
+	//skip normalmap on sky .... for now
+	else if (!Q_stricmp(token, "sky") )
+	{
+		imageBits |= !IF_NORMALMAP;
 	}
 
 	// determine image options
@@ -6514,8 +6508,8 @@ static int ScanAndLoadShaderFiles(void)
 	char filename[MAX_QPATH];
 	long sum = 0, summand;
 
-	Com_Memset(buffers, 0, sizeof(buffers));
-	Com_Memset(shaderTextHashTableSizes, 0, sizeof(shaderTextHashTableSizes));
+	Com_Memset(buffers, 0, MAX_SHADER_FILES);
+	Com_Memset(shaderTextHashTableSizes, 0, MAX_SHADER_FILES);
 
 	// scan for shader files
 	shaderFiles = ri.FS_ListFiles("materials", ".shader", &numShaderFiles);
