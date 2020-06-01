@@ -1289,7 +1289,12 @@ const void *RB_StretchPicGradient(const void *data)
 	return ( const void * ) (cmd + 1);
 }
 
+#if 0
 #define R_GetGLError() R_PrintGLError(__FILE__, __LINE__)
+#else
+#define R_GetGLError()
+#endif
+
 void R_PrintGLError(const char *sourceFilename, int sourceLine)
 {
 	GLenum err;
@@ -1539,13 +1544,12 @@ void RB_CalcScalingWeights(int mode, float sampleRadius, int numPatterns, int nu
 	float radius;
 	switch (mode)
 	{
-	case 3:
-	case 4:
-	case 5:
-		radius = 2.f;
+	case 1:
+		radius = sampleRadius;
 		break;
 	default:
-		radius = sampleRadius;
+		radius = 2.f;
+		break;
 	}
 	vec2_t stepxy = {1.f / backEnd.viewParms.viewportWidth, 1.f / backEnd.viewParms.viewportHeight};
 	vec2_t outpix = {1.f / glConfig.vidWidth, 1.f / glConfig.vidHeight};
@@ -1598,14 +1602,13 @@ void RB_CalcScalingWeights(int mode, float sampleRadius, int numPatterns, int nu
 						}
 						switch (mode)
 						{
-						case 3:
-						case 4:
-						case 5:
-							weights->buffer[weightIndex] = RB_CalcBicubicWeight(dist2D, mode);
-							break;
-						default:
+						case 1:
 							sample = max(dist2D * 3.1415926535897932384626433832795, 1e-5);
 							weights->buffer[weightIndex] = sin(sample) / sample * sin(sample / radius) / (sample / radius);
+							break;
+						default :
+							weights->buffer[weightIndex] = RB_CalcBicubicWeight(dist2D, mode);
+							break;
 						}
 					}
 				}
@@ -1887,7 +1890,7 @@ void RB_UtilizeOffScreenBuffers(void)
 
 				glUseProgram(backEnd.objects.resScaleProgramObjects[PO_MINIFY_AVERAGE]);
 				glUniform1i(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_MINIFY_AVERAGE], "Texture"), 0);
-				glUniform1f(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_MINIFY_AVERAGE], "linearNum"), r_resolutionScale->integer);
+				glUniform1f(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_MINIFY_AVERAGE], "ScaleInt"), r_resolutionScale->integer);
 				glUniform2f(glGetUniformLocation(backEnd.objects.resScaleProgramObjects[PO_MINIFY_AVERAGE], "TextureSize"), backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight);
 
 				/*glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
@@ -1959,8 +1962,6 @@ void RB_UtilizeOffScreenBuffers(void)
 					//numPatterns = 1;
 					RB_CalcScalingWeights(r_highQualityScalingMode->integer, radius, numPatterns, numJitters, backEnd.objects.supersampleJittersInPixel[0], &backEnd.objects.resScaleWeights);
 					glUseProgram(program);
-					glUniform2f(glGetUniformLocation(program, "InputPixelSize"), 1.f / backEnd.viewParms.viewportWidth, 1.f / backEnd.viewParms.viewportHeight);
-					glUniform2f(glGetUniformLocation(program, "OutputPixelSize"), 1.f / glConfig.vidWidth, 1.f / glConfig.vidHeight);
 					glUniform1fv(glGetUniformLocation(program, "Weights"), ARRAY_LEN(backEnd.objects.resScaleWeights.buffer), backEnd.objects.resScaleWeights.buffer);
 					/*glUniform2iv(glGetUniformLocation(program, "WeightsIndexes"), MAX_SCALING_SAMPLE_PATTERNS * MAX_SCALING_SAMPLE_PATTERNS, backEnd.objects.resScaleWeights.indexes);
 					glUniform2iv(glGetUniformLocation(program, "WeightCount"), MAX_SCALING_SAMPLE_PATTERNS * MAX_SCALING_SAMPLE_PATTERNS, backEnd.objects.resScaleWeights.counter);
@@ -2005,25 +2006,15 @@ void RB_UtilizeOffScreenBuffers(void)
 							glUniform2i(glGetUniformLocation(program, va("WeightCount[%i]", i)), backEnd.objects.resScaleWeights.counter[0][0][i][0], backEnd.objects.resScaleWeights.counter[0][0][i][1]);
 							glUniform2f(glGetUniformLocation(program, va("FirstPos[%i]", i)), backEnd.objects.resScaleWeights.FirstPos[0][0][i][0], backEnd.objects.resScaleWeights.FirstPos[0][0][i][1]);
 						}
-						R_GetGLError();
 						glUniform1i(glGetUniformLocation(program, "NumJitters"), numJitters);
-						R_GetGLError();
 						glUniform1iv(glGetUniformLocation(program, "Textures"), numJitters, textureUnits);
-						R_GetGLError();
-						R_GetGLError();
 					}
 					else
 					{
 						glUniform2i(glGetUniformLocation(program, "WeightCount"), backEnd.objects.resScaleWeights.counter[0][0][0][0], backEnd.objects.resScaleWeights.counter[0][0][0][1]);
 						glUniform2f(glGetUniformLocation(program, "FirstPos"), backEnd.objects.resScaleWeights.FirstPos[0][0][0][0], backEnd.objects.resScaleWeights.FirstPos[0][0][0][1]);
 					}
-					backEnd.objects.resScaleWeightsCalculated = qtrue;
 				}
-			}
-			else if (r_highQualityScaling->integer & 8)
-			{
-				program = backEnd.objects.resScaleProgramObjects[backEnd.objects.resScaleWeightsCalculated ? PO_RESOLUTION_SCALE_REF_WEIGHT_BUFFER : PO_RESOLUTION_SCALE_CALC_WEIGHTS];
-				radius = r_scalingSampleRadius->value;
 			}
 			else if (r_highQualityScalingMode->integer == 1)
 			{
@@ -2062,8 +2053,10 @@ void RB_UtilizeOffScreenBuffers(void)
 			{
 				R_GetGLError();
 				glUniform1i(glGetUniformLocation(program, "Texture"), 0);
-				glUniform2f(glGetUniformLocation(program, "TextureSize"), backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight);
-				glUniform2f(glGetUniformLocation(program, "OutputSize"), glConfig.vidWidth, glConfig.vidHeight);
+				//glUniform2f(glGetUniformLocation(program, "TextureSize"), backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight);
+				//glUniform2f(glGetUniformLocation(program, "OutputSize"), glConfig.vidWidth, glConfig.vidHeight);
+				glUniform2f(glGetUniformLocation(program, "InputPixelSize"), 1.f / backEnd.viewParms.viewportWidth, 1.f / backEnd.viewParms.viewportHeight);
+				glUniform2f(glGetUniformLocation(program, "OutputPixelSize"), 1.f / glConfig.vidWidth, 1.f / glConfig.vidHeight);
 				glUniform1i(glGetUniformLocation(program, "Mode"), r_highQualityScalingMode->integer);
 				glUniform1f(glGetUniformLocation(program, "Radius"), radius);
 				glUniform1f(glGetUniformLocation(program, "RadiusMultiplier"), multiplier);
@@ -2075,15 +2068,12 @@ void RB_UtilizeOffScreenBuffers(void)
 			{
 				DrawStuff_GL430();
 			}
-			else if (r_highQualityScaling->integer & 8)
-			{
-				DrawStuff_GL430();
-				backEnd.objects.resScaleWeightsCalculated = qtrue;
-			}
 			else
 			{
 				DrawStuffDynamicRes(glConfig.vidWidth, glConfig.vidHeight, dynamicScale);
 			}
+
+			backEnd.objects.resScaleWeightsCalculated = qtrue;
 		}
 	}
 	else

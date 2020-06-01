@@ -365,7 +365,7 @@ pack_t *fs_purePaks[2048];
 int fs_numPurePaks;
 
 // allow paks with certain checksums
-int fs_allowedCustomPaks[] = {94603189};
+int fs_allowedCustomPaks[] = {11876582};
 
 #ifdef FS_MISSING
 FILE *missingFiles = NULL;
