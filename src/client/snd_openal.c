@@ -2633,6 +2633,11 @@ static float S_AL_StartStreamingSoundEx(const char *intro, const char *loop, int
 		ssData[ss].stream = S_CodecOpenStream(loop);
 	}
 
+	if (!ssData[ss].stream)
+	{
+		return 0.f;
+	}
+
 	// Generate the musicBuffers
 	qalGenBuffers(NUM_STREAM_BUFFERS, ssBuffers[ss]);
 
