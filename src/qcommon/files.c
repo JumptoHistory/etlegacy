@@ -365,7 +365,7 @@ pack_t *fs_purePaks[2048];
 int fs_numPurePaks;
 
 // allow paks with certain checksums
-int fs_allowedCustomPaks[] = {11876582};
+int fs_allowedCustomPaks[] = {-1587468048, 136129044, 1207356207};
 
 #ifdef FS_MISSING
 FILE *missingFiles = NULL;
@@ -4305,6 +4305,7 @@ static void FS_Startup(const char *gameName)
 
 	Com_Printf("--------------------------------\n");
 
+	searchpath_t *append = NULL, *cappend;
 	for (search = fs_searchpaths; search && search->next; search = search->next)
 	{
 		int i;
@@ -4317,11 +4318,26 @@ static void FS_Startup(const char *gameName)
 			if (search->next->pack->checksum == fs_allowedCustomPaks[i])
 			{
 				searchpath_t *next = search->next->next;
-				search->next->next = fs_searchpaths;
-				fs_searchpaths = search->next;
+				search->next->next = NULL;
+				if (append)
+				{
+					for (cappend = append; cappend->next; cappend = cappend->next);
+					cappend->next = search->next;
+				}
+				else
+				{
+					append = search->next;
+				}
 				search->next = next;
+				break;
 			}
 		}
+	}
+	if (append)
+	{
+		for (cappend = append; cappend->next; cappend = cappend->next);
+		cappend->next = fs_searchpaths;
+		fs_searchpaths = append;
 	}
 
 	fs_numPurePaks = 0;
@@ -4553,7 +4569,7 @@ const char *FS_ReferencedPakPureChecksums(void)
 			// is the element a pak file and has it been referenced based on flag?
 			if (search->pack && (search->pack->referenced & nFlags))
 			{
-				// so an eallowed custom pak doesn't get you kicked for unpure client
+				// so allowed custom paks don't get you kicked for unpure client
 				if (!(nFlags & (FS_CGAME_REF | FS_UI_REF)))
 				{
 					int i;
