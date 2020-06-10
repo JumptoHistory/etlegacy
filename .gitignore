@@ -62,3 +62,9 @@ win_resource.aps
 # Do not under any circumstances ignore these
 !/easybuild.sh
 !/easybuild.bat
+/package/renderer_gm_opengl1_x86_avx2.dll
+/package/etl_gm.exe
+/package/etl_gm_avx.exe
+/package/etl_gm_avx2.exe
+/package/renderer_gm_opengl1_x86.dll
+/package/renderer_gm_opengl1_x86_avx.dll
