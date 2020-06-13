@@ -1,0 +1,29 @@
+List of new cvars:
+
+cl_slashCommand [0|1]
+	If set to 1 then no need to add '\' or '/' befor commands in console; add " instead to say something in global chat.
+	
+cl_consoleAlpha [0.0 - 1.0]
+	Sets how opaque the background of console apears. -1 for default.
+	
+cl_consoleRGB [0.0 - 1.0] [0.0 - 1.0] [0.0 - 1.0]
+	Sets the RGB of the background of console if cl_consoleAlpha is not -1.
+
+sys_processAffinityMask [bitflags]
+	Sets which logical CPU cores are to be used, e.g. 5 to use 1st and 3rd cores. Specifying a fastest core of the CPU or two can reduce stuttering.
+	
+r_transparencyAlphaBlend [0|1]
+	Enables or disables the custom shader-text file for alpha blending on textures with transparency. Setting this to 1 significantly reduces aliasing within textures.
+	
+r_fboMultiSample [0 - 32]
+	Sets the multisample samples per pixel for anti-aliasing. If set to -1 then it will use the maximum number available on your GPU and driver.
+
+r_resolutionScale [0.25 - 3.0]
+	Sets the rendering resolution relative to the screen resolution. 2.0 means 2x width and height thus 4x supersampling.
+	
+r_highQualityScaling [bitflags]
+	Sets the bitflags to specify filtering method for resolution scaling. If 0 then it will use the GL_LINEAR filter of OpenGL.
+	Flag bits:
+		1: Use a proper Bicubic or Lanczos filter; sample weights are calculated for each pixel and frame on GPU by default. 
+		2: Use simple averaging filter for integer multiplication of resolution scale.
+		4: If set along side 1, e.g. 5, then it once precalculates weights on CPU and then sends them to the GPU to reference thus decreasing GPU load.
