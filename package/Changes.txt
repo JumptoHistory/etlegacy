@@ -4,7 +4,7 @@ Transparency Alpha Blending
 Resolution Scaling
 	Allows it to render 3D scene at a different resolution relative to screen pixel width/height
 	
-Fixed "Low Pings Only" drop.
-Disabled ET protocol check.
-Fixed "Unpure Client" error.
+Fixed "Low Pings Only" drop issue.
+Disabled ET protocol check that was preventing from connecting to some servers.
+Fixed "Unpure Client" error that happened after going back to main menu and then reconnect.
 More efficient method for searching through pk3s for a file.
