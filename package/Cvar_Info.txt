@@ -1,7 +1,7 @@
 List of new cvars:
 
 cl_slashCommand [0|1]
-	If set to 1 then no need to add '\' or '/' befor commands in console; add " instead to say something in global chat.
+	If set to 1 then no need to add '\' or '/' before commands in console; add " instead to say something in global chat.
 	
 cl_consoleAlpha [0.0 - 1.0]
 	Sets how opaque the background of console apears. -1 for default.
