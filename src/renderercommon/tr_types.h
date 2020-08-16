@@ -494,6 +494,8 @@ typedef struct {
 	qboolean generateMipmapAvailable;
 	qboolean framebufferSrgbAvailable;
 	qboolean textureNPOTAvailable;
+	qboolean textureFilterAnisotropic;
+	float    maxAnisotropy;
 
 	int multisampleSamples;
 } glconfigExt_t;

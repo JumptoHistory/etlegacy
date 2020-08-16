@@ -2911,7 +2911,7 @@ void CL_Init(void)
 	cl_promptColor = Cvar_Get("cl_promptColor", "-1", CVAR_ARCHIVE);
 	cl_consoleAlpha = Cvar_Get("cl_consoleAlpha", "-1", CVAR_ARCHIVE);
 	cl_consoleRGB = Cvar_Get("cl_consoleRGB", "", CVAR_ARCHIVE);
-	cl_slashCommand = Cvar_Get("cl_slashCommand", "0", CVAR_ARCHIVE);
+	cl_slashCommand = Cvar_Get("cl_slashCommand", "1", CVAR_ARCHIVE);
 	// register our commands
 	Cmd_AddCommand("cmd", CL_ForwardToServer_f, "Executes a reliable server command.");
 	Cmd_AddCommand("configstrings", CL_Configstrings_f, "Prints configstrings.");

@@ -1401,6 +1401,7 @@ void RB_SetupResolutionScaleBuffers(void)
 {
 	static const GLenum drawBuffer = GL_COLOR_ATTACHMENT0;
 	GLuint multisample;
+	int renderWidth, renderHeight;
 	int i;
 
 	if (!glConfigExt.multisampleSamples && glConfigExt.maxSamples > 0)
@@ -1419,9 +1420,12 @@ void RB_SetupResolutionScaleBuffers(void)
 		multisample = 0;
 	}
 
+	renderWidth = glConfig.vidWidth * r_resolutionScale->value * (r_simpleSupersample->integer ? 2 : 1);
+	renderHeight = glConfig.vidHeight * r_resolutionScale->value * (r_simpleSupersample->integer ? 2 : 1);
+
 	glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[1]);
 	glBindRenderbuffer(GL_RENDERBUFFER, backEnd.objects.resScaleColorBuffers[1]);
-	glRenderbufferStorage(GL_RENDERBUFFER, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value);
+	glRenderbufferStorage(GL_RENDERBUFFER, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, renderWidth, renderHeight);
 	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, backEnd.objects.resScaleColorBuffers[1]);
 
 	R_GetGLError();
@@ -1433,27 +1437,27 @@ void RB_SetupResolutionScaleBuffers(void)
 		if (multisample > 0)
 		{
 			glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, backEnd.objects.resScaleTexturesMultisample[i]);
-			glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, multisample, glConfigExt.framebufferSrgbAvailable ? (i ? GL_SRGB_ALPHA : GL_SRGB) : GL_RGB, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, GL_FALSE);
+			glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, multisample, glConfigExt.framebufferSrgbAvailable ? (i ? GL_SRGB_ALPHA : GL_SRGB) : GL_RGB, renderWidth, renderHeight, GL_FALSE);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, backEnd.objects.resScaleTexturesMultisample[i], 0);
 		}
 		else
 		{
 			glBindRenderbuffer(GL_RENDERBUFFER, backEnd.objects.resScaleColorBufferMultisample);
 			glFramebufferRenderbuffer(GL_FRAMEBUFFER, drawBuffer, GL_RENDERBUFFER, backEnd.objects.resScaleColorBufferMultisample);
-			//glTexImage2D(texTarget, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-			glRenderbufferStorage(GL_RENDERBUFFER, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value);
+			//glTexImage2D(texTarget, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, renderWidth, renderHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+			glRenderbufferStorage(GL_RENDERBUFFER, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, renderWidth, renderHeight);
 		}
 		if (multisample > 0)
 		{
 			glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, backEnd.objects.resScaleDepthTexturesMultisample[i]);
-			glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, multisample, GL_DEPTH24_STENCIL8, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, GL_FALSE);
+			glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, multisample, GL_DEPTH24_STENCIL8, renderWidth, renderHeight, GL_FALSE);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D_MULTISAMPLE, backEnd.objects.resScaleDepthTexturesMultisample[0], 0);
 		}
 		else
 		{
-			//glTexImage2D(texTarget, 0, GL_DEPTH24_STENCIL8, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_BYTE, NULL);
+			//glTexImage2D(texTarget, 0, GL_DEPTH24_STENCIL8, renderWidth, renderHeight, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_BYTE, NULL);
 			glBindRenderbuffer(GL_RENDERBUFFER, backEnd.objects.resScaleDepthBufferMultisample);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, renderWidth, renderHeight);
 			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, backEnd.objects.resScaleDepthBufferMultisample);
 		}
 		glDrawBuffer(drawBuffer);
@@ -1472,19 +1476,19 @@ void RB_SetupResolutionScaleBuffers(void)
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 		if (i == 0)
 		{
-			glTexImage2D(GL_TEXTURE_2D, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->value, glConfig.vidHeight * r_resolutionScale->value, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+			glTexImage2D(GL_TEXTURE_2D, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, renderWidth, renderHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 			glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, backEnd.objects.resScaleTextures[i], 0);
 		}
 		else if (i == 1)
 		{
-			glTexImage2D(GL_TEXTURE_2D, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->value / r_resolutionScale->integer, glConfig.vidHeight * r_resolutionScale->value / r_resolutionScale->integer, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+			glTexImage2D(GL_TEXTURE_2D, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, renderWidth / r_resolutionScale->integer, renderHeight / r_resolutionScale->integer, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 			glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[2]);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, backEnd.objects.resScaleTextures[i], 0);
 		}
 		else if (i == 2)
 		{
-			glTexImage2D(GL_TEXTURE_2D, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * r_resolutionScale->integer, glConfig.vidHeight * r_resolutionScale->integer, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+			glTexImage2D(GL_TEXTURE_2D, 0, glConfigExt.framebufferSrgbAvailable ? GL_SRGB : GL_RGB, glConfig.vidWidth * (r_highQualityScaling->integer & 2 ? r_resolutionScale->integer : r_resolutionScale->value), glConfig.vidHeight * (r_highQualityScaling->integer & 2 ? r_resolutionScale->integer : r_resolutionScale->value), 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 			glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[3]);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, backEnd.objects.resScaleTextures[i], 0);
 		}
@@ -1696,12 +1700,13 @@ void RB_PrepairOffScreenBuffers(void)
 {
 	static qboolean resScaleModified = qfalse;
 	//static float resScaleOrg = 0.0;
-	static int resScaleModCount = 0, fboMsModCount = 0, scalingSampleRadius = 0, HQScalingModCount = 0, HQScalingModeModCount = 0, supersampleModCount = 0, supersampleSmoothenessModCount = 0, supersampleMultiframeModCount = 0, supersampleModeModCount = 0, resScaleLodFixModCount = 0;
+	static int resScaleModCount = 0, fboMsModCount = 0, scalingSampleRadius = 0, HQScalingModCount = 0, HQScalingModeModCount = 0, supersampleModCount = 0, supersampleSmoothenessModCount = 0, supersampleMultiframeModCount = 0, supersampleModeModCount = 0,
+		resScaleLodFixModCount = 0, simpleSupersampleModCount = 0;
 	int i;
 
 	if (r_resolutionScale->modificationCount != resScaleModCount || r_fboMultisample->modificationCount != fboMsModCount || scalingSampleRadius != r_scalingSampleRadius->modificationCount || HQScalingModCount != r_highQualityScaling->modificationCount || HQScalingModeModCount != r_highQualityScalingMode->modificationCount ||
 		supersampleModCount != r_supersample->modificationCount || supersampleSmoothenessModCount != r_supersampleSmoothness->modificationCount || supersampleMultiframeModCount != r_supersampleMultiframe->modificationCount || supersampleModeModCount != r_supersampleMode->modificationCount ||
-		resScaleLodFixModCount != r_resolutionScaleLodFix->modificationCount)
+		resScaleLodFixModCount != r_resolutionScaleLodFix->modificationCount || r_simpleSupersample->modificationCount != simpleSupersampleModCount)
 	{ 
 		r_resolutionScale->value = strtof(r_resolutionScale->string, NULL);
 		r_highQualityScaling->integer = atoi(r_highQualityScaling->string);
@@ -1791,10 +1796,11 @@ void RB_PrepairOffScreenBuffers(void)
 		supersampleMultiframeModCount = r_supersampleMultiframe->modificationCount;
 		supersampleModeModCount = r_supersampleMode->modificationCount;
 		resScaleLodFixModCount = r_resolutionScaleLodFix->modificationCount;
+		simpleSupersampleModCount = r_simpleSupersample->modificationCount;
 	}
 
-	backEnd.viewParms.viewportWidth *= r_resolutionScale->value;
-	backEnd.viewParms.viewportHeight *= r_resolutionScale->value;
+	backEnd.viewParms.viewportWidth *= r_resolutionScale->value * (r_simpleSupersample->integer ? 2 : 1);
+	backEnd.viewParms.viewportHeight *= r_resolutionScale->value * (r_simpleSupersample->integer ? 2 : 1);
 
 	glBindFramebuffer(GL_FRAMEBUFFER, backEnd.objects.resScaleFramebuffersMultisample[0]);
 
@@ -1843,7 +1849,21 @@ void RB_UtilizeOffScreenBuffers(void)
 		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
 		glReadBuffer(GL_COLOR_ATTACHMENT0);
 		glBlitFramebuffer(0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+
+		if (r_simpleSupersample->integer)
+		{
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[3]);
+			glBlitFramebuffer(0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, 0, backEnd.viewParms.viewportWidth / 2, backEnd.viewParms.viewportHeight / 2, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+			backEnd.viewParms.viewportWidth /= 2;
+			backEnd.viewParms.viewportHeight /= 2;
+
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[3]);
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
+			glBlitFramebuffer(0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight, 0, 0, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight , GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		}
 	}
+
 
 	GLenum err = glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if(err != GL_FRAMEBUFFER_COMPLETE)
@@ -1859,6 +1879,7 @@ void RB_UtilizeOffScreenBuffers(void)
 		BindTexture(backEnd.objects.resScaleTextures[0]);
 		glDisableClientState(GL_COLOR_ARRAY);
 
+
 		if (r_highQualityScaling->integer & 2)
 		{
 			if (r_resolutionScale->integer >= 2 && r_resolutionScale->value / r_resolutionScale->integer == 1.f)
@@ -1867,7 +1888,7 @@ void RB_UtilizeOffScreenBuffers(void)
 			}
 			else if (r_resolutionScale->value > 2.f)
 			{
-				if (!(r_highQualityScaling->integer & 1))
+				if (!(r_highQualityScaling->integer & (1 | 4)))
 				{
 					glBindFramebuffer(GL_READ_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[0]);
 					glBindFramebuffer(GL_DRAW_FRAMEBUFFER, backEnd.objects.resScaleFramebuffers[3]);

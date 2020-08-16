@@ -484,11 +484,12 @@ void RE_BeginFrame(void)
 	}
 
 	// texturemode stuff
-	if (r_textureMode->modified)
+	if (r_textureMode->modified || r_extMaxAnisotropy->modified)
 	{
 		R_IssuePendingRenderCommands();
 		GL_TextureMode(r_textureMode->string);
 		r_textureMode->modified = qfalse;
+		r_extMaxAnisotropy->modified = qfalse;
 	}
 
 	// gamma stuff

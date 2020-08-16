@@ -2369,6 +2369,7 @@ extern cvar_t *r_supersampleMultiframe;
 extern cvar_t *r_supersampleSmoothness;
 extern cvar_t *r_supersampleMode;
 extern cvar_t *r_supersampleLodFix;
+extern cvar_t *r_simpleSupersample;
 extern cvar_t *r_ignoreNoMipmaps;
 //extern cvar_t *r_generateMipMaps;
 extern cvar_t *r_resolutionScale;

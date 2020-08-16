@@ -174,6 +174,7 @@ cvar_t *r_supersampleMultiframe;
 cvar_t *r_supersampleSmoothness;
 cvar_t *r_supersampleMode;
 cvar_t *r_supersampleLodFix;
+cvar_t *r_simpleSupersample;
 cvar_t *r_ignoreNoMipmaps;
 //cvar_t *r_generateMipMaps;
 cvar_t *r_resolutionScale;
@@ -1054,21 +1055,22 @@ void R_Register(void)
 #endif
 #endif
 
-	r_supersample = ri.Cvar_Get("r_supersample", "0", 0);
+	r_supersample = ri.Cvar_Get("r_supersample", "0", CVAR_ARCHIVE);
 	r_supersampleMultiframe = ri.Cvar_Get("r_supersampleMultiframe", "2", 0);
 	ri.Cvar_CheckRange(r_supersampleMultiframe, 1, 4, qtrue);
 	r_supersampleSmoothness = ri.Cvar_Get("r_supersampleSmoothness", "1.0", 0);
 	ri.Cvar_CheckRange(r_supersampleSmoothness, 0.25, 2.0, qfalse);
-	r_supersampleMode = ri.Cvar_Get("r_supersampleMode", "0", 0);
-	r_supersampleLodFix = ri.Cvar_Get("r_supersampleLodFix", "0.5", 0);
+	r_supersampleMode = ri.Cvar_Get("r_supersampleMode", "0", CVAR_ARCHIVE);
+	r_supersampleLodFix = ri.Cvar_Get("r_supersampleLodFix", "0.5", CVAR_ARCHIVE);
 	ri.Cvar_CheckRange(r_supersampleLodFix, 0.0, 2.0, qfalse);
+	r_simpleSupersample = ri.Cvar_Get("r_simpleSupersample", "0", CVAR_ARCHIVE);
 	r_ignoreNoMipmaps = ri.Cvar_Get("r_ignoreNoMipmaps", "0", 0);
 	//r_generateMipMaps = ri.Cvar_Get("r_generateMipMaps", "1", CVAR_LATCH);
-	r_resolutionScale = ri.Cvar_Get("r_resolutionScale", "1.0", 0);
+	r_resolutionScale = ri.Cvar_Get("r_resolutionScale", "1.0", CVAR_ARCHIVE);
 	ri.Cvar_CheckRange(r_resolutionScale, 0.25, 4.0, qfalse);
-	r_resolutionScaleLodFix = ri.Cvar_Get("r_resolutionScaleLodFix", "0.0", 0);
+	r_resolutionScaleLodFix = ri.Cvar_Get("r_resolutionScaleLodFix", "0.0", CVAR_ARCHIVE);
 	ri.Cvar_CheckRange(r_resolutionScaleLodFix, 0.0, 1.0, qfalse);
-	r_highQualityScaling = ri.Cvar_Get("r_highQualityScaling", "1", 0);
+	r_highQualityScaling = ri.Cvar_Get("r_highQualityScaling", "1", CVAR_ARCHIVE);
 	r_highQualityScalingMode = ri.Cvar_Get("r_highQualityScalingMode", "0", 0);
 	r_scalingSampleRadius = ri.Cvar_Get("r_scalingSampleRadius", "2.0", 0);
 	ri.Cvar_CheckRange(r_scalingSampleRadius, 1.0, 3.0, qfalse);
@@ -1079,9 +1081,9 @@ void R_Register(void)
 	r_fboFxaa = ri.Cvar_Get("r_fboFxaa", "0", 0);
 	r_priorityShaderFileNames = ri.Cvar_Get("r_priorityShaderFileNames", "", CVAR_CHEAT | CVAR_LATCH);
 	r_customShaderFiles = ri.Cvar_Get("r_customShaderFiles", "", CVAR_CHEAT | CVAR_LATCH);
-	r_transparencyAlphaBlend = ri.Cvar_Get("r_transparencyAlphaBlend", "1", CVAR_LATCH);
-	r_extGenerateMipmap           = ri.Cvar_Get("r_ext_generate_mipmap", "1", CVAR_LATCH);
-	r_extTextureNonPowerOfTwo     = ri.Cvar_Get("r_extTextureNonPowerOfTwo", "0", CVAR_LATCH);
+	r_transparencyAlphaBlend = ri.Cvar_Get("r_transparencyAlphaBlend", "1", CVAR_LATCH | CVAR_ARCHIVE);
+	r_extGenerateMipmap           = ri.Cvar_Get("r_ext_generate_mipmap", "1", CVAR_LATCH | CVAR_ARCHIVE);
+	r_extTextureNonPowerOfTwo     = ri.Cvar_Get("r_extTextureNonPowerOfTwo", "0", CVAR_LATCH | CVAR_ARCHIVE);
 
 	// latched and archived variables
 	r_allowExtensions       = ri.Cvar_Get("r_allowExtensions", "1", CVAR_ARCHIVE | CVAR_LATCH | CVAR_UNSAFE);
@@ -1089,8 +1091,8 @@ void R_Register(void)
 	r_extMultitexture       = ri.Cvar_Get("r_ext_multitexture", "1", CVAR_ARCHIVE | CVAR_LATCH | CVAR_UNSAFE);
 	r_extTextureEnvAdd      = ri.Cvar_Get("r_ext_texture_env_add", "1", CVAR_ARCHIVE | CVAR_LATCH);
 
-	r_extTextureFilterAnisotropic = ri.Cvar_Get("r_ext_texture_filter_anisotropic", "0", CVAR_ARCHIVE | CVAR_LATCH | CVAR_UNSAFE);
-	r_extMaxAnisotropy            = ri.Cvar_Get("r_ext_max_anisotropy", "2", CVAR_ARCHIVE | CVAR_LATCH);
+	r_extTextureFilterAnisotropic = ri.Cvar_Get("r_ext_texture_filter_anisotropic", "1", CVAR_ARCHIVE | CVAR_LATCH | CVAR_UNSAFE);
+	r_extMaxAnisotropy            = ri.Cvar_Get("r_ext_max_anisotropy", "2", CVAR_ARCHIVE);
 
 	r_picMip = ri.Cvar_Get("r_picmip", "1", CVAR_ARCHIVE | CVAR_LATCH);          // mod for DM and DK for id build.  was "1" - pushed back to 1
 	ri.Cvar_CheckRange(r_picMip, 0, 3, qtrue);

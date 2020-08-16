@@ -173,6 +173,12 @@ void GL_TextureMode(const char *string)
 			GL_Bind(glt);
 			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter_min);
 			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, gl_filter_max);
+
+			if (glConfigExt.textureFilterAnisotropic)
+			{
+				qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT,
+					(GLfloat)Com_Clamp(1.0, glConfigExt.maxAnisotropy, r_extMaxAnisotropy->value));
+			}
 		}
 	}
 }
@@ -856,11 +862,11 @@ done:
 
 	if (mipmap)
 	{
-		//if (textureFilterAnisotropic)
+		if (glConfigExt.textureFilterAnisotropic)
 		{
 			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT,
-							 //(GLint)Com_Clamp(1, maxAnisotropy, r_extMaxAnisotropy->integer));
-				r_extMaxAnisotropy->value);
+							 (GLfloat)Com_Clamp(1.0, glConfigExt.maxAnisotropy, r_extMaxAnisotropy->value));
+				//r_extMaxAnisotropy->value);
 		}
 
 		qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, gl_filter_min);
@@ -868,9 +874,9 @@ done:
 	}
 	else
 	{
-		//if (textureFilterAnisotropic)
+		if (glConfigExt.textureFilterAnisotropic)
 		{
-			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.f);
+			qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, 1.0);
 		}
 
 		qglTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);

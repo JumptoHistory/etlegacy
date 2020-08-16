@@ -76,7 +76,7 @@
 
 #define MAX_MASTER_SERVERS 5   ///< number of supported master servers
 
-#define SLASH_COMMAND !cl_slashCommand->integer        ///< Will the client require a '/' sign in front of commands
+#define SLASH_COMMAND cl_slashCommand->integer        ///< Will the client require a '/' sign in front of commands
 
 /// Added after 272 release these are used by mod code
 #define MOD_VERSION_DATA_CHECK(x) (x && x >= 272 && x < 3000)

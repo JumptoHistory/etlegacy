@@ -631,6 +631,13 @@ static void GLimp_InitExtensions(void)
 	{
 		Com_Printf("...GL_ARB_texture_non_power_of_to not found\n");
 	}
+
+	glConfigExt.textureFilterAnisotropic = qfalse;
+	if (GLimp_CheckForVersionExtension("GL_ARB_texture_filter_anisotropic", 460, qfalse, r_extTextureFilterAnisotropic))
+	{
+		glConfigExt.textureFilterAnisotropic = qtrue;
+		glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &glConfigExt.maxAnisotropy);
+	}
 }
 #endif
 
