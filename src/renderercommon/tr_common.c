@@ -633,7 +633,7 @@ static void GLimp_InitExtensions(void)
 	}
 
 	glConfigExt.textureFilterAnisotropic = qfalse;
-	if (GLimp_CheckForVersionExtension("GL_ARB_texture_filter_anisotropic", 460, qfalse, r_extTextureFilterAnisotropic))
+	if (GLimp_CheckForVersionExtension("GL_ARB_texture_filter_anisotropic", 460, qfalse, NULL))
 	{
 		glConfigExt.textureFilterAnisotropic = qtrue;
 		glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &glConfigExt.maxAnisotropy);
