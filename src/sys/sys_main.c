@@ -62,6 +62,7 @@ static char binaryPath[MAX_OSPATH]  = { 0 };
 static char installPath[MAX_OSPATH] = { 0 };
 
 cvar_t *sys_processAffinityMask = NULL;
+cvar_t *sys_powerScheme = NULL;
 
 /**
  * @brief Sys_SetBinaryPath
@@ -262,6 +263,7 @@ void Sys_Init(void)
 	Cvar_Set("username", Sys_GetCurrentUser());
 
 	sys_processAffinityMask = Cvar_Get("sys_processAffinityMask", "", CVAR_ARCHIVE);
+	sys_powerScheme = Cvar_Get("sys_powerScheme", "", CVAR_ARCHIVE);
 }
 
 /**

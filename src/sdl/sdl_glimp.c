@@ -261,6 +261,10 @@ void GLimp_Shutdown(void)
 	}
 
 	SDL_QuitSubSystem(SDL_INIT_VIDEO);
+
+#ifdef WIN32
+	Sys_RestorePowerScheme();
+#endif
 }
 
 /**
