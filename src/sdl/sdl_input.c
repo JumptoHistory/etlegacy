@@ -1282,10 +1282,25 @@ static void IN_ProcessEvents(void)
 			case SDL_WINDOWEVENT_LEAVE:
 				Key_ClearStates();
 				Cvar_SetValue("com_unfocused", 1);
+#ifdef WIN32
+				if (com_unfocused->modified)
+				{
+					Sys_RestorePowerScheme();
+					com_unfocused->modified = qfalse;
+				}
+#endif
 				break;
 			case SDL_WINDOWEVENT_ENTER:
 			case SDL_WINDOWEVENT_FOCUS_GAINED:
 			{
+				Cvar_SetValue("com_unfocused", 0);
+#ifdef WIN32
+				if (com_unfocused->modified)
+				{
+					Sys_SetPowerScheme();
+					com_unfocused->modified = qfalse;
+				}
+#endif
 				Cvar_SetValue("com_unfocused", 0);
 
 				if (com_minimized->integer)

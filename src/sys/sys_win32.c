@@ -57,6 +57,7 @@
 #include <shlobj.h> // for SHGetFolderPath
 #include <psapi.h>
 #include <setjmp.h>
+#include <powersetting.h>
 
 // Used to determine where to store user-specific files
 static char homePath[MAX_OSPATH] = { 0 };
@@ -1000,6 +1001,55 @@ void Sys_SetProcessProperties(void)
 			//Fuck!
 			Com_DPrintf(S_COLOR_RED "Sys_SetProcessProperties failed to set process affinity");
 		}
+	}
+}
+
+/**
+* @brief Sys_SetPowerScheme
+*/
+static GUID *DefaultPowerScheme = NULL;
+extern cvar_t *sys_powerScheme;
+void Sys_SetPowerScheme(void)
+{
+	if (sys_powerScheme && sys_powerScheme->string[0])
+	{
+		GUID scheme;
+
+		if (sscanf(sys_powerScheme->string, "%lx-%hx-%hx-%2hhx%2hhx-%2hhx%2hhx%2hhx%2hhx%2hhX%2hhx",
+			&scheme.Data1, &scheme.Data2, &scheme.Data3,
+			scheme.Data4, scheme.Data4 + 1, scheme.Data4 + 2, scheme.Data4 + 3, scheme.Data4 + 4, scheme.Data4 + 5, scheme.Data4 + 6,
+			scheme.Data4 + 7) != 11)
+		{
+			Com_Printf("Sys_SetPowerScheme: Invalid power scheme GUID.\n");
+			return;
+		}
+
+		// save the current power scheme so we can restore it afterwards
+		LocalFree(DefaultPowerScheme);
+		if (PowerGetActiveScheme(NULL, &DefaultPowerScheme) != ERROR_SUCCESS)
+		{
+			Com_Printf("Sys_SetPowerScheme: Failed to retrieve active scheme.\n");
+			return;
+		}
+
+		if (PowerSetActiveScheme(NULL, &scheme) != ERROR_SUCCESS)
+		{
+			Com_Printf("Sys_SetPowerScheme: Failed to set active power scheme.\n");
+			return;
+		}
+	}
+}
+
+/**
+* @brief Sys_RestorePowerScheme
+*/
+void Sys_RestorePowerScheme(void)
+{
+	if (PowerSetActiveScheme(NULL, DefaultPowerScheme) != ERROR_SUCCESS)
+	{
+		Com_Printf("Sys_RestorePowerScheme: Failed to set active power scheme.\n");
+		Com_Printf("DefaultPowerScheme: %x-%x-%x-%x%x-%x%x%x%x%x%x\n", DefaultPowerScheme->Data1, DefaultPowerScheme->Data2, DefaultPowerScheme->Data3,
+			DefaultPowerScheme->Data4[0], DefaultPowerScheme->Data4[1], DefaultPowerScheme->Data4[2], DefaultPowerScheme->Data4[3], DefaultPowerScheme->Data4[4], DefaultPowerScheme->Data4[5], DefaultPowerScheme->Data4[6], DefaultPowerScheme->Data4[7]);
 	}
 }
 
